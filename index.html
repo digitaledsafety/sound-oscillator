@@ -116,7 +116,7 @@
 
       let waveformAnalyzer = null;
       const barCount = 64; // Number of bars to display in the visualization
-      const minBarHeight = 2; // Minimum height for bars to be visible when no sound
+      // Removed minBarHeight global variable, now calculated dynamically
 
       // Long press and double tap variables
       let pressTimer = null;
@@ -417,16 +417,21 @@
         const svgWidth = waveformSvg.node().clientWidth;
         const svgHeight = waveformSvg.node().clientHeight;
 
+        // Dynamic minimum bar height based on SVG height
+        const minBarHeight = svgHeight * 0.01; // 1% of SVG height
+
         // Calculate samples per bar and bar width
         const samplesPerBar = Math.floor(waveformArray.length / barCount);
         const barWidth = svgWidth / barCount;
 
         // Prepare data for bars (average amplitude for each segment)
         const barData = [];
+        const visualGain = 2.0; // Factor to visually amplify low signals
         for (let i = 0; i < barCount; i++) {
           let sum = 0;
           for (let j = 0; j < samplesPerBar; j++) {
-            sum += Math.abs(waveformArray[i * samplesPerBar + j]);
+            // Apply visualGain here to amplify for visualization, and clamp to 1.0
+            sum += Math.min(1.0, Math.abs(waveformArray[i * samplesPerBar + j]) * visualGain);
           }
           barData.push(sum / samplesPerBar); // Average amplitude for the bar
         }
@@ -447,8 +452,7 @@
           // Ensure bars have a minimum height and are positioned from the bottom
           .attr("y", d => svgHeight - Math.max(minBarHeight, d * svgHeight))
           .attr("height", d => Math.max(minBarHeight, d * svgHeight))
-          .attr("fill", d => colorScale(d)); // <--- DYNAMIC COLORING ADDED HERE
-                                            // 'd' is the amplitude value for each bar
+          .attr("fill", d => colorScale(d)); // 'd' is the amplitude value for each bar
         // Exit old bars
         bars.exit().remove();
 
