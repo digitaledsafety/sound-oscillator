@@ -4,7 +4,8 @@
     <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sound Oscillator PWA</title>
-    <link rel="manifest" href="manifest.json"> <script src="https://unpkg.com/tone"></script>
+    <link rel="manifest" href="/manifest.json">
+    <script src="https://unpkg.com/tone"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
@@ -28,7 +29,7 @@
         z-index: 1; /* Ensure it's visible */
       }
 
-      /* Container for top-right controls */
+      /* Container for top-right controls (now empty, but kept for structure) */
       #top-right-controls {
         position: fixed;
         top: 1rem;
@@ -48,56 +49,35 @@
         left: 1rem;
         z-index: 10; /* Ensure it's above the SVG */
         display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.75rem;
-        padding: 0.5rem;
+        flex-direction: column; /* Use column for vertical stacking if needed, but flex-start aligns items */
+        align-items: flex-start; /* Align items to the left */
+        gap: 0; /* Remove gap if only one element */
+        padding: 0.5rem; /* Smaller padding */
         background-color: rgba(255, 255, 255, 0.9); /* Slightly transparent white */
         border-radius: 0.5rem;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        padding: 1rem;
-      }
-
-      #top-left-controls label {
-        font-size: 0.9rem;
-        font-weight: bold;
-        color: #333;
-        margin-bottom: 0.25rem;
+        padding: 0.75rem; /* Reduced padding for a more compact look */
       }
 
       #top-left-controls select {
-        padding: 0.4rem;
+        padding: 0.3rem 0.6rem; /* Smaller padding for select */
         border-radius: 0.25rem;
         border: 1px solid #ccc;
-        font-size: 0.9rem;
-        margin-bottom: 0.5rem;
+        font-size: 0.85rem; /* Slightly smaller font size */
         background-color: #f9f9f9;
         color: #333;
-      }
-
-      /* Beta display styling */
-      #beta-display {
-        background-color: rgba(255, 255, 255, 0.9); /* Slightly transparent white */
-        padding: 0.5rem 1rem; /* Reduced padding */
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        font-size: 1rem; /* Reduced font size */
-        font-weight: bold;
-        color: #333;
-        text-align: right; /* Align text to the right within its box */
+        appearance: none; /* Remove default dropdown arrow */
+        background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23333%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13.6-6.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%204.6%201.8%208.4%205.4%2012L137%20229.4c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2094.2c3.6-3.6%205.4-7.8%205.4-12.8%200-4.6-1.8-8.4-5.4-12z%22%2F%3E%3C%2Fsvg%3E');
+        background-repeat: no-repeat;
+        background-position: right 0.5rem center;
+        background-size: 0.6em auto;
+        padding-right: 2rem; /* Make space for the custom arrow */
       }
       /* Removed .bar fill from CSS as it's now handled dynamically by D3 */
     </style>
   </head>
   <body>
-    <div id="top-right-controls">
-      <div id="beta-display">
-        Alpha: 0.00, Beta: 0.00, Gamma: 0.00
-      </div>
-    </div>
-
     <div id="top-left-controls">
-        <label for="scaleSelect">Scale:</label>
         <select id="scaleSelect"></select>
     </div>
 
@@ -122,9 +102,9 @@
         'C Pentatonic Major': { rootNote: 'C', intervals: [0, 2, 4, 7, 9] },
         'A Blues': { rootNote: 'A', intervals: [0, 3, 5, 6, 7, 10] },
         'Chromatic': { rootNote: 'C', intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
-        'C Dorian': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 9, 10] }, 
-        'C Lydian': { rootNote: 'C', intervals: [0, 2, 4, 6, 7, 9, 11] },   
-        'C Harmonic Minor': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 8, 11] } 
+        'C Dorian': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 9, 10] },
+        'C Lydian': { rootNote: 'C', intervals: [0, 2, 4, 6, 7, 9, 11] },
+        'C Harmonic Minor': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 8, 11] }
       };
 
       let generatedScaleFrequencies = []; // Cache for frequencies of the current scale
@@ -166,7 +146,7 @@
             const freq = Tone.Frequency(midiNote, 'midi').toFrequency();
 
             // Only add frequencies within a reasonable audible and application range
-            if (freq >= 50 && freq <= maxFrequency * 1.5) { 
+            if (freq >= 50 && freq <= maxFrequency * 1.5) {
               notes.push(freq);
             }
           }
@@ -383,7 +363,6 @@
 
           if (activeSoundCount > 1) {
               // Calculate linear gain as 1 divided by the number of active sources
-              // A slight adjustment might be needed depending on the perceived loudness.
               // A typical approach for multiple simultaneous sources is to sum their powers (amplitude squared)
               // and ensure total power doesn't exceed 1, which for N identical sources means each should be 1/sqrt(N).
               // However, a simple 1/N for gain often works well enough perceptually for volume reduction.
@@ -497,7 +476,8 @@
 
       // Main script execution when the DOM is fully loaded
       document.addEventListener('DOMContentLoaded', () => {
-        const betaDisplay = document.getElementById('beta-display');
+        // Removed the betaDisplay element as it's no longer in the HTML
+        // const betaDisplay = document.getElementById('beta-display');
         const scaleSelect = document.getElementById('scaleSelect');
 
         // Select the SVG element using D3
@@ -551,11 +531,13 @@
 
         // Centralized device orientation listener
         window.addEventListener("deviceorientation", (event) => {
-          alpha = event.alpha !== null ? event.alpha.valueOf() : alpha;
+          // alpha = event.alpha !== null ? event.alpha.valueOf() : alpha; // Commented out
           beta = event.beta !== null ? event.beta.valueOf() : beta;
-          gamma = event.gamma !== null ? event.gamma.valueOf() : gamma;
+          // gamma = event.gamma !== null ? event.gamma.valueOf() : gamma; // Commented out
 
-          betaDisplay.textContent = `Alpha: ${alpha.toFixed(2)}, Beta: ${beta.toFixed(2)}, Gamma: ${gamma.toFixed(2)}`;
+          // Removed the line that updates betaDisplay.textContent
+          // betaDisplay.textContent = `Beta: ${beta.toFixed(2)}`;
+
           // Log live frequency (raw or snapped) if active for debugging
           if (previewLoop || instrument) {
               const currentOutputFreq = getNormalizedValue(); // Will be snapped if a scale is active
@@ -626,7 +608,7 @@
         // Register the service worker
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
-            navigator.serviceWorker.register('service-worker.js')
+            navigator.serviceWorker.register('/service-worker.js')
               .then(registration => {
                 console.log('ServiceWorker registered: ', registration);
               })
