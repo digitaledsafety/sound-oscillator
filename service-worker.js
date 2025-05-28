@@ -2,7 +2,7 @@ const CACHE_NAME = 'sound-oscillator-cache-v1';
 const urlsToCache = [
   'index.html',
   'https://unpkg.com/tone',
-  'https://cdn.tailwindcss.com',
+  'https://proxy.fxio.workers.dev/corsproxy/?apiurl=https://cdn.tailwindcss.com/3.4.16',
   'https://d3js.org/d3.v7.min.js',
   // You would need to create these icon directories and files
   // For a real PWA, ensure these paths exist and icons are correctly sized
