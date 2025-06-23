@@ -130,7 +130,7 @@
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
         Tone.Master.connect(waveformAnalyzer); // Connect master output to analyzer
 
-        console.log("Tone.js audio context ready to start on interaction.");
+        //console.log("Tone.js audio context ready to start on interaction.");
       }
 
       // Function to stop all active sounds and clear Tone.js transport
@@ -167,7 +167,7 @@
           loop.dispose(); // Dispose of each loop
         });
         savedLoops = []; // Clear the saved loops array
-        console.log("All sounds cleared.");
+        //console.log("All sounds cleared.");
         updateMasterVolume(); // Update volume after clearing sounds
       }
 
@@ -183,15 +183,15 @@
           instrument.stop();
           instrument.dispose();
           instrument = null;
-          console.log("Continuous note instrument stopped.");
+          //console.log("Continuous note instrument stopped.");
         } else {
           // If instrument is not active, start it
           instrument = new Tone.Oscillator(getNormalizedValue(), "sine").toMaster().start();
-          console.log("Continuous note instrument started.");
+          //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
               Tone.getTransport().start();
-              console.log("Transport started for continuous note.");
+              //console.log("Transport started for continuous note.");
           }
         }
         updateMasterVolume(); // Update volume after toggling continuous note
@@ -225,7 +225,7 @@
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
           synth.triggerAttackRelease(currentFreq, "8n", time);
-          console.log("Preview Loop: Triggering note at frequency:", currentFreq.toFixed(2));
+          //console.log("Preview Loop: Triggering note at frequency:", currentFreq.toFixed(2));
         }, "4n").start(0);
 
         // Attach the synth to the loop object for later disposal
@@ -233,9 +233,9 @@
 
         if (Tone.getTransport().state !== 'started') {
           Tone.getTransport().start();
-          console.log("Transport started for preview loop.");
+          //console.log("Transport started for preview loop.");
         }
-        console.log("Started dynamic pulsing preview loop.");
+        //console.log("Started dynamic pulsing preview loop.");
         updateMasterVolume(); // Update volume after starting preview loop
       }
 
@@ -263,11 +263,11 @@
         // Start the Tone.js transport if it's not already running.
         if (Tone.getTransport().state !== 'started') {
           Tone.getTransport().start();
-          console.log("Transport started.");
+          //console.log("Transport started.");
         } else {
-          console.log("Transport already started.");
+          //console.log("Transport already started.");
         }
-        console.log(`Added a new fixed loop at frequency: ${fixedFrequency.toFixed(2)} Hz. Total loops: ${savedLoops.length}`);
+        //console.log(`Added a new fixed loop at frequency: ${fixedFrequency.toFixed(2)} Hz. Total loops: ${savedLoops.length}`);
         updateMasterVolume(); // Update volume after adding a new loop
       }
 
@@ -298,7 +298,7 @@
 
           // Apply a smooth ramp to the volume change to avoid clicks/pops
           Tone.Master.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
-          console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
+          //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
       }
 
 
@@ -307,11 +307,11 @@
       async function requestWakeLock() {
         try {
           wakeLock = await navigator.wakeLock.request('screen');
-          console.log('Wake Lock acquired');
+          //console.log('Wake Lock acquired');
 
           // Add a listener for the release event
           wakeLock.addEventListener('release', () => {
-            console.log('Wake Lock released');
+            //console.log('Wake Lock released');
             wakeLock = null;
           });
         } catch (err) {
@@ -442,10 +442,10 @@
 
             if (currentScaleConfig && currentScaleConfig.rootNote && currentScaleConfig.intervals) {
                 generatedScaleFrequencies = generateScaleFrequencies(currentScaleConfig.rootNote, currentScaleConfig.intervals);
-                console.log(`Scale updated to: ${selectedScaleName}. Generated ${generatedScaleFrequencies.length} frequencies.`);
+                //console.log(`Scale updated to: ${selectedScaleName}. Generated ${generatedScaleFrequencies.length} frequencies.`);
             } else {
                 generatedScaleFrequencies = []; // No snapping
-                console.log("Snapping Off.");
+                //console.log("Snapping Off.");
             }
             clearSounds(); // Reset all sounds when scale changes
         }
@@ -465,7 +465,7 @@
           // Log live frequency (raw or snapped) if active for debugging
           if (previewLoop || instrument) {
               const currentOutputFreq = getNormalizedValue(); // Will be snapped if a scale is active
-              console.log("Live Output Freq (dynamic):", currentOutputFreq.toFixed(2));
+              //console.log("Live Output Freq (dynamic):", currentOutputFreq.toFixed(2));
           }
 
 
@@ -482,11 +482,11 @@
           if (Tone.context.state !== 'running') {
             try {
               await Tone.start();
-              console.log("Tone.js audio context started by user interaction.");
+              //console.log("Tone.js audio context started by user interaction.");
               // Explicitly resume context if it's not running after Tone.start()
               if (Tone.context.state !== 'running') {
                 await Tone.context.resume();
-                console.log("Tone.js audio context resumed by user interaction.");
+                //console.log("Tone.js audio context resumed by user interaction.");
               }
             } catch (e) {
               console.error("Error starting/resuming Tone.js context:", e);
@@ -511,7 +511,7 @@
           if (currentTime - lastTapTime < doubleTapThreshold) {
               // This is a double tap
               clearSounds();
-              console.log("Double tap detected: All sounds stopped.");
+              //console.log("Double tap detected: All sounds stopped.");
               lastTapTime = 0; // Reset to prevent triple taps from being double taps
           } else {
               // This is a single tap (or the first tap of a potential double tap)
@@ -534,10 +534,10 @@
           window.addEventListener('load', () => {
             navigator.serviceWorker.register('/service-worker.js')
               .then(registration => {
-                console.log('ServiceWorker registered: ', registration);
+                //console.log('ServiceWorker registered: ', registration);
               })
               .catch(registrationError => {
-                console.log('ServiceWorker registration failed: ', registrationError);
+                //console.log('ServiceWorker registration failed: ', registrationError);
               });
           });
         }
