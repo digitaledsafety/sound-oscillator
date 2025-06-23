@@ -103,7 +103,6 @@
       function getNormalizedValue() {
         // Using raw beta directly as per user-provided original logic
         let rawFreq = ((Math.sin(beta * (Math.PI / 180))) * maxFrequency + maxFrequency) / 2;
-        console.log(`Raw Beta Used: ${beta.toFixed(2)}, Calculated RawFreq: ${rawFreq.toFixed(2)}`);
 
         // If a scale is selected (i.e., not 'Off'), snap the frequency
         if (currentScaleConfig && currentScaleConfig.intervals && generatedScaleFrequencies.length > 0) {
