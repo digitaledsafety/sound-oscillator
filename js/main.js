@@ -101,9 +101,9 @@
       // Function to get the normalized frequency based on device beta tilt
       // This function now applies snapping if a scale is selected.
       function getNormalizedValue() {
-        // Cap beta to a more practical range for pitch control (e.g., -90 to +90 degrees)
-        const cappedBeta = Math.max(-90, Math.min(90, beta)); // Clamps beta between -90 and 90
-        let rawFreq = ((Math.sin(cappedBeta * (Math.PI / 180))) * maxFrequency + maxFrequency) / 2;
+        // Using raw beta directly as per user-provided original logic
+        let rawFreq = ((Math.sin(beta * (Math.PI / 180))) * maxFrequency + maxFrequency) / 2;
+        console.log(`Raw Beta Used: ${beta.toFixed(2)}, Calculated RawFreq: ${rawFreq.toFixed(2)}`);
 
         // If a scale is selected (i.e., not 'Off'), snap the frequency
         if (currentScaleConfig && currentScaleConfig.intervals && generatedScaleFrequencies.length > 0) {
