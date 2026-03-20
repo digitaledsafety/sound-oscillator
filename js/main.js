@@ -123,12 +123,12 @@
         // Low-shelf filter to give a slight boost to low frequencies
         const lowBump = new Tone.Filter(200, "lowshelf");
 
-        // Chain the effects to the master output
-        Tone.Master.chain(lowBump, masterCompressor);
+        // Chain the effects to the destination output
+        Tone.Destination.chain(lowBump, masterCompressor);
 
-        // Initialize waveform analyzer and connect it to Tone.Master
+        // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
-        Tone.Master.connect(waveformAnalyzer); // Connect master output to analyzer
+        Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
 
         //console.log("Tone.js audio context ready to start on interaction.");
       }
@@ -186,7 +186,8 @@
           //console.log("Continuous note instrument stopped.");
         } else {
           // If instrument is not active, start it
-          instrument = new Tone.Oscillator(getNormalizedValue(), "sine").toMaster().start();
+          const selectedWaveform = document.getElementById('waveformSelect').value;
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -220,7 +221,10 @@
         }
 
         // Create the synth for the preview loop locally
-        const synth = new Tone.FMSynth().toMaster();
+        const selectedWaveform = document.getElementById('waveformSelect').value;
+        const synth = new Tone.FMSynth({
+            oscillator: { type: selectedWaveform }
+        }).toDestination();
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -250,7 +254,10 @@
         const fixedFrequency = getNormalizedValue(); // Capture the value ONCE here
 
         // Create a new FM synth for the loop
-        const synth = new Tone.FMSynth().toMaster();
+        const selectedWaveform = document.getElementById('waveformSelect').value;
+        const synth = new Tone.FMSynth({
+            oscillator: { type: selectedWaveform }
+        }).toDestination();
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -285,10 +292,6 @@
 
           if (activeSoundCount > 1) {
               // Calculate linear gain as 1 divided by the number of active sources
-              // A typical approach for multiple simultaneous sources is to sum their powers (amplitude squared)
-              // and ensure total power doesn't exceed 1, which for N identical sources means each should be 1/sqrt(N).
-              // However, a simple 1/N for gain often works well enough perceptually for volume reduction.
-              // For decibels, 20 * log10(gain). Here, for N sources, gain = 1/N. So 20 * log10(1/N) = -20 * log10(N).
               targetVolumeDb = -20 * Math.log10(activeSoundCount);
           }
 
@@ -297,7 +300,7 @@
           else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
 
           // Apply a smooth ramp to the volume change to avoid clicks/pops
-          Tone.Master.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
+          Tone.Destination.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
           //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
       }
 
@@ -368,8 +371,7 @@
           .attr("x", (d, i) => i * barWidth)
           .attr("width", barWidth * 0.8) // Slightly smaller width for gaps
           .merge(bars) // Merge enter and update selections
-          .transition() // Add transition for smooth changes
-          .duration(50) // Short duration for quick updates
+          // Removed transition for real-time performance
           .attr("x", (d, i) => i * barWidth + (barWidth * 0.1)) // Adjust x for centering with gap
           // Ensure bars have a minimum height and are positioned from the bottom
           .attr("y", d => svgHeight - Math.max(minBarHeight, d * svgHeight))
@@ -402,9 +404,8 @@
 
       // Main script execution when the DOM is fully loaded
       document.addEventListener('DOMContentLoaded', () => {
-        // Removed the betaDisplay element as it's no longer in the HTML
-        // const betaDisplay = document.getElementById('beta-display');
         const scaleSelect = document.getElementById('scaleSelect');
+        const waveformSelect = document.getElementById('waveformSelect');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -442,15 +443,14 @@
 
             if (currentScaleConfig && currentScaleConfig.rootNote && currentScaleConfig.intervals) {
                 generatedScaleFrequencies = generateScaleFrequencies(currentScaleConfig.rootNote, currentScaleConfig.intervals);
-                //console.log(`Scale updated to: ${selectedScaleName}. Generated ${generatedScaleFrequencies.length} frequencies.`);
             } else {
                 generatedScaleFrequencies = []; // No snapping
-                //console.log("Snapping Off.");
             }
             clearSounds(); // Reset all sounds when scale changes
         }
 
         scaleSelect.addEventListener('change', updateScaleSettings);
+        waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
@@ -459,34 +459,30 @@
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
 
-          // Removed the line that updates betaDisplay.textContent
-          // betaDisplay.textContent = `Beta: ${beta.toFixed(2)}`;
-
-          // Log live frequency (raw or snapped) if active for debugging
-          if (previewLoop || instrument) {
-              const currentOutputFreq = getNormalizedValue(); // Will be snapped if a scale is active
-              //console.log("Live Output Freq (dynamic):", currentOutputFreq.toFixed(2));
-          }
-
-
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
             instrument.frequency.value = getNormalizedValue(); // This will be snapped if a scale is active
           }
-          // The previewLoop's frequency is updated directly in its callback, so no need to update here.
         }, true);
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("mousedown touchstart", async function() {
+          // Request permission for device orientation (required on iOS)
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+              const permission = await DeviceOrientationEvent.requestPermission();
+              //console.log('DeviceOrientation permission status:', permission);
+            } catch (err) {
+              console.error('Error requesting DeviceOrientation permission:', err);
+            }
+          }
+
           // Ensure Tone.js context is started on first interaction
           if (Tone.context.state !== 'running') {
             try {
               await Tone.start();
-              //console.log("Tone.js audio context started by user interaction.");
-              // Explicitly resume context if it's not running after Tone.start()
               if (Tone.context.state !== 'running') {
                 await Tone.context.resume();
-                //console.log("Tone.js audio context resumed by user interaction.");
               }
             } catch (e) {
               console.error("Error starting/resuming Tone.js context:", e);
@@ -511,14 +507,9 @@
           if (currentTime - lastTapTime < doubleTapThreshold) {
               // This is a double tap
               clearSounds();
-              //console.log("Double tap detected: All sounds stopped.");
               lastTapTime = 0; // Reset to prevent triple taps from being double taps
           } else {
               // This is a single tap (or the first tap of a potential double tap)
-              // If continuous tone is playing, a short tap adds a fixed loop.
-              // If preview loop is playing, a short tap adds a fixed loop.
-              // If neither continuous nor preview are playing, but saved loops exist, a short tap starts preview.
-              // If absolutely nothing is playing, a short tap starts preview.
               if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
                   addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
               } else {
@@ -534,10 +525,10 @@
           window.addEventListener('load', () => {
             navigator.serviceWorker.register('/service-worker.js')
               .then(registration => {
-                //console.log('ServiceWorker registered: ', registration);
+                //console.log('ServiceWorker registered');
               })
               .catch(registrationError => {
-                //console.log('ServiceWorker registration failed: ', registrationError);
+                console.error('ServiceWorker registration failed:', registrationError);
               });
           });
         }

@@ -72,13 +72,20 @@
         background-position: right 0.5rem center;
         background-size: 0.6em auto;
         padding-right: 2rem; /* Make space for the custom arrow */
+        cursor: pointer;
       }
       /* Removed .bar fill from CSS as it's now handled dynamically by D3 */
     </style>
   </head>
   <body>
     <div id="top-left-controls">
-        <select id="scaleSelect"></select>
+        <select id="scaleSelect" title="Select Musical Scale"></select>
+        <select id="waveformSelect" class="mt-2" title="Select Waveform">
+          <option value="sine">Sine</option>
+          <option value="square">Square</option>
+          <option value="triangle">Triangle</option>
+          <option value="sawtooth">Sawtooth</option>
+        </select>
     </div>
 
     <div id="top-right-controls">
