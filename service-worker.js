@@ -1,9 +1,9 @@
 const CACHE_NAME = 'sound-oscillator-cache-v1';
 const urlsToCache = [
   'index.html',
-  'js/main.js', # Also add the new main.js file
+  'js/main.js',
   'https://unpkg.com/tone',
-  'https://proxy.fxio.workers.dev/corsproxy/?apiurl=https://cdn.tailwindcss.com/3.4.16',
+  'https://cdn.tailwindcss.com',
   'https://d3js.org/d3.v7.min.js',
   'icons/icon-96x96.png',
   'icons/icon-128x128.png',
