@@ -4,27 +4,28 @@
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
+      let gamma = 0; // Device orientation values (panning)
+      let masterPanner = null; // Stereo panner for the master output
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
       // --- Scale-related Global Variables and Definitions ---
       let currentScaleConfig = null; // Holds the { rootNote, intervals } for the selected scale
 
       const availableScales = {
-        'Off': { rootNote: null, intervals: null }, // No snapping
-        'C Major': { rootNote: 'C', intervals: [0, 2, 4, 5, 7, 9, 11] },
-        'A Minor': { rootNote: 'A', intervals: [0, 2, 3, 5, 7, 8, 10] },
-        'C Pentatonic Major': { rootNote: 'C', intervals: [0, 2, 4, 7, 9] },
-        'A Blues': { rootNote: 'A', intervals: [0, 3, 5, 6, 7, 10] },
-        'Chromatic': { rootNote: 'C', intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
-        'C Dorian': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 9, 10] },
-        'C Lydian': { rootNote: 'C', intervals: [0, 2, 4, 6, 7, 9, 11] },
-        'C Harmonic Minor': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 8, 11] },
-        'F Minor': { rootNote: 'F', intervals: [0, 2, 3, 5, 7, 8, 10] },
-        'C Minor Pentatonic': { rootNote: 'C', intervals: [0, 3, 5, 7, 10] }, // Added C Minor Pentatonic
-        'G Minor Pentatonic': { rootNote: 'G', intervals: [0, 3, 5, 7, 10] }, // Added G Minor Pentatonic
-        'Dorian Minor': { rootNote: 'D', intervals: [0, 2, 3, 5, 7, 9, 10] }, // Added Dorian Minor (same as Dorian, but explicit name)
-        'Phrygian Minor': { rootNote: 'E', intervals: [0, 1, 3, 5, 7, 8, 10] } // Added Phrygian Minor
+        'Off': { intervals: null }, // No snapping
+        'Major': { intervals: [0, 2, 4, 5, 7, 9, 11] },
+        'Minor': { intervals: [0, 2, 3, 5, 7, 8, 10] },
+        'Pentatonic Major': { intervals: [0, 2, 4, 7, 9] },
+        'Pentatonic Minor': { intervals: [0, 3, 5, 7, 10] },
+        'Blues': { intervals: [0, 3, 5, 6, 7, 10] },
+        'Chromatic': { intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+        'Dorian': { intervals: [0, 2, 3, 5, 7, 9, 10] },
+        'Lydian': { intervals: [0, 2, 4, 6, 7, 9, 11] },
+        'Phrygian': { intervals: [0, 1, 3, 5, 7, 8, 10] },
+        'Harmonic Minor': { intervals: [0, 2, 3, 5, 7, 8, 11] }
       };
+
+      const availableRoots = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
       let generatedScaleFrequencies = []; // Cache for frequencies of the current scale
 
@@ -41,7 +42,7 @@
       let pressTimer = null;
       const longPressDuration = 500; // milliseconds
       let isLongPress = false;
-      let lastTapTime = 0;
+      let lastTapTime = -1000;
       const doubleTapThreshold = 300; // milliseconds
 
       // --- Scale-related Functions ---
@@ -113,22 +114,26 @@
 
       // Function to initialize Tone.js audio context and effects
       function startSounds() {
+        // Master panner for stereo field control based on gamma
+        masterPanner = new Tone.Panner(0).toDestination();
+
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
-          "threshold": 0,
-          "ratio": 1,
+          "threshold": -24,
+          "ratio": 4,
           "attack": 0.5,
           "release": 0.1
         });
         // Low-shelf filter to give a slight boost to low frequencies
         const lowBump = new Tone.Filter(200, "lowshelf");
 
-        // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor);
+        // Chain the effects to the panner
+        lowBump.chain(masterCompressor, masterPanner);
 
-        // Initialize waveform analyzer and connect it to Tone.Destination
-        waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
-        Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
+        // Connect the final output stage to the analyzer
+        // Note: Using Tone.Destination as it's the global output context
+        waveformAnalyzer = new Tone.Waveform(1024);
+        Tone.Destination.connect(waveformAnalyzer);
 
         //console.log("Tone.js audio context ready to start on interaction.");
       }
@@ -404,6 +409,7 @@
 
       // Main script execution when the DOM is fully loaded
       document.addEventListener('DOMContentLoaded', () => {
+        const rootSelect = document.getElementById('rootSelect');
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
 
@@ -427,6 +433,15 @@
         resizeSvg();
         window.addEventListener('resize', resizeSvg);
 
+        // Populate root dropdown
+        availableRoots.forEach(root => {
+          const option = document.createElement('option');
+          option.value = root;
+          option.textContent = root;
+          rootSelect.appendChild(option);
+        });
+        rootSelect.value = 'C';
+
         // Populate scale dropdown
         for (const scaleName in availableScales) {
           const option = document.createElement('option');
@@ -439,18 +454,35 @@
         // --- Event Listener for Scale Controls ---
         function updateScaleSettings() {
             const selectedScaleName = scaleSelect.value;
+            const selectedRoot = rootSelect.value;
             currentScaleConfig = availableScales[selectedScaleName];
 
-            if (currentScaleConfig && currentScaleConfig.rootNote && currentScaleConfig.intervals) {
-                generatedScaleFrequencies = generateScaleFrequencies(currentScaleConfig.rootNote, currentScaleConfig.intervals);
+            if (currentScaleConfig && currentScaleConfig.intervals) {
+                generatedScaleFrequencies = generateScaleFrequencies(selectedRoot, currentScaleConfig.intervals);
             } else {
                 generatedScaleFrequencies = []; // No snapping
             }
-            clearSounds(); // Reset all sounds when scale changes
+            // Optional: You could clear sounds here, but we'll keep them for more dynamic play
         }
 
         scaleSelect.addEventListener('change', updateScaleSettings);
-        waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+        rootSelect.addEventListener('change', updateScaleSettings);
+
+        // Real-time waveform update
+        waveformSelect.addEventListener('change', () => {
+            const newType = waveformSelect.value;
+            if (instrument) {
+                instrument.type = newType;
+            }
+            if (previewLoop && previewLoop.synth) {
+                previewLoop.synth.oscillator.type = newType;
+            }
+            savedLoops.forEach(loop => {
+                if (loop.synth) {
+                    loop.synth.oscillator.type = newType;
+                }
+            });
+        });
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
@@ -458,6 +490,15 @@
         // Centralized device orientation listener
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
+          gamma = event.gamma !== null ? event.gamma.valueOf() : gamma;
+
+          // Update stereo panning based on gamma (-90 to 90 degrees)
+          if (masterPanner) {
+              // Map gamma -45 to 45 range to -1 to 1 for more sensitive panning
+              let panValue = gamma / 45;
+              panValue = Math.max(-1, Math.min(1, panValue));
+              masterPanner.pan.rampTo(panValue, 0.1);
+          }
 
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
@@ -466,7 +507,7 @@
         }, true);
 
         // Event listeners for tap (click) and long press on the SVG visualizer
-        waveformSvg.on("mousedown touchstart", async function() {
+        waveformSvg.on("pointerdown", async function() {
           // Request permission for device orientation (required on iOS)
           if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
@@ -496,7 +537,7 @@
           }, longPressDuration);
         });
 
-        waveformSvg.on("mouseup touchend", function(event) {
+        waveformSvg.on("pointerup", function(event) {
           clearTimeout(pressTimer); // Clear long press timer
           if (isLongPress) {
               isLongPress = false; // Reset long press flag

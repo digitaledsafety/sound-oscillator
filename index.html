@@ -79,7 +79,10 @@
   </head>
   <body>
     <div id="top-left-controls">
-        <select id="scaleSelect" title="Select Musical Scale"></select>
+        <div class="flex gap-2">
+            <select id="rootSelect" title="Select Root Note"></select>
+            <select id="scaleSelect" title="Select Musical Scale"></select>
+        </div>
         <select id="waveformSelect" class="mt-2" title="Select Waveform">
           <option value="sine">Sine</option>
           <option value="square">Square</option>
@@ -89,6 +92,7 @@
     </div>
 
     <div id="top-right-controls">
+        <button id="clearAllBtn" class="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-3 py-2 rounded-lg uppercase tracking-wider shadow-md transition-colors" onclick="clearSounds()">Clear All</button>
         <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
     </div>
 
