@@ -1,6 +1,8 @@
 const CACHE_NAME = 'sound-oscillator-cache-v1';
 const urlsToCache = [
+  './',
   'index.html',
+  'manifest.json',
   'js/main.js',
   'https://unpkg.com/tone',
   'https://cdn.tailwindcss.com',

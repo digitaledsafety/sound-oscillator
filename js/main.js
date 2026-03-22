@@ -180,14 +180,27 @@
 
         if (instrument) {
           // If instrument is active, stop it
-          instrument.stop();
-          instrument.dispose();
-          instrument = null;
+          const oldInstrument = instrument;
+          instrument = null; // Immediately set to null to allow restarting
+          oldInstrument.triggerRelease();
+          // Dispose after a longer delay to allow the 0.8s release envelope to finish
+          setTimeout(() => {
+            oldInstrument.dispose();
+          }, 1000);
           //console.log("Continuous note instrument stopped.");
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Synth({
+            oscillator: { type: selectedWaveform },
+            envelope: {
+              attack: 0.1,
+              decay: 0.2,
+              sustain: 1.0,
+              release: 0.8
+            }
+          }).toDestination();
+          instrument.triggerAttack(getNormalizedValue());
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -441,10 +454,17 @@
             const selectedScaleName = scaleSelect.value;
             currentScaleConfig = availableScales[selectedScaleName];
 
+            const scaleInfoDiv = document.getElementById('scale-info');
             if (currentScaleConfig && currentScaleConfig.rootNote && currentScaleConfig.intervals) {
                 generatedScaleFrequencies = generateScaleFrequencies(currentScaleConfig.rootNote, currentScaleConfig.intervals);
+                // Update scale info display
+                const scaleNotes = currentScaleConfig.intervals.map(interval => {
+                    return Tone.Frequency(`${currentScaleConfig.rootNote}4`).transpose(interval).toNote().replace(/\d/, '');
+                }).join(' ');
+                scaleInfoDiv.textContent = `Notes: ${scaleNotes}`;
             } else {
                 generatedScaleFrequencies = []; // No snapping
+                scaleInfoDiv.textContent = '';
             }
             clearSounds(); // Reset all sounds when scale changes
         }
@@ -455,13 +475,32 @@
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
 
+        // Help Overlay Logic
+        const helpButton = document.getElementById('helpButton');
+        const closeHelp = document.getElementById('closeHelp');
+        const helpOverlay = document.getElementById('helpOverlay');
+
+        helpButton.addEventListener('click', () => {
+          helpOverlay.classList.remove('hidden');
+        });
+
+        closeHelp.addEventListener('click', () => {
+          helpOverlay.classList.add('hidden');
+        });
+
         // Centralized device orientation listener
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
 
+          const freq = getNormalizedValue();
+          // Update UI feedback
+          document.getElementById('frequency-display').textContent = `Freq: ${Math.round(freq)} Hz`;
+          document.getElementById('note-display').textContent = `Note: ${Tone.Frequency(freq).toNote()}`;
+          document.getElementById('tilt-display').textContent = `Tilt: ${Math.round(beta)}°`;
+
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
-            instrument.frequency.value = getNormalizedValue(); // This will be snapped if a scale is active
+            instrument.frequency.rampTo(freq, 0.05); // Smoother transition
           }
         }, true);
 
@@ -523,7 +562,7 @@
         // Register the service worker
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js')
+            navigator.serviceWorker.register('service-worker.js')
               .then(registration => {
                 //console.log('ServiceWorker registered');
               })
