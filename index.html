@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <meta charset="UTF-8">
     <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sound Oscillator PWA</title>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/tone"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -78,7 +79,7 @@
     </style>
   </head>
   <body>
-    <div id="top-left-controls">
+    <div id="top-left-controls" class="backdrop-blur-md bg-white/80">
         <select id="scaleSelect" title="Select Musical Scale"></select>
         <select id="waveformSelect" class="mt-2" title="Select Waveform">
           <option value="sine">Sine</option>
@@ -86,10 +87,45 @@
           <option value="triangle">Triangle</option>
           <option value="sawtooth">Sawtooth</option>
         </select>
+        <div id="scale-info" class="mt-2 text-[10px] text-gray-600 max-w-[150px] leading-tight"></div>
     </div>
 
-    <div id="top-right-controls">
-        <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
+    <div id="top-right-controls" class="flex flex-col items-end gap-2">
+        <span class="bg-yellow-400 text-black text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Beta</span>
+        <button id="helpButton" class="bg-white/80 backdrop-blur-md text-gray-700 p-2 rounded-full shadow-lg hover:bg-white transition-colors" title="How to Use">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        </button>
+    </div>
+
+    <div id="helpOverlay" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-white rounded-xl p-6 max-w-sm w-full shadow-2xl">
+            <h2 class="text-xl font-bold mb-4 text-gray-800">How to Play</h2>
+            <ul class="space-y-4 text-sm text-gray-600">
+                <li class="flex gap-3">
+                    <span class="font-bold text-blue-500">Short Tap:</span>
+                    <span>Starts a pulsing preview sound. Tap again to layer sounds.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="font-bold text-blue-500">Long Press:</span>
+                    <span>Toggles a continuous note that follows your movement.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="font-bold text-blue-500">Double Tap:</span>
+                    <span>Stops and clears all currently playing sounds.</span>
+                </li>
+                <li class="flex gap-3">
+                    <span class="font-bold text-blue-500">Tilt:</span>
+                    <span>Change the pitch by tilting your device front-to-back.</span>
+                </li>
+            </ul>
+            <button id="closeHelp" class="mt-6 w-full bg-blue-500 text-white font-bold py-2 rounded-lg hover:bg-blue-600 transition-colors">Got it!</button>
+        </div>
+    </div>
+
+    <div id="status-bar" class="fixed bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm text-white px-4 py-1 text-[10px] flex justify-between z-20 pointer-events-none uppercase tracking-widest">
+        <span id="frequency-display">Freq: 0 Hz</span>
+        <span id="note-display">Note: -</span>
+        <span id="tilt-display">Tilt: 0°</span>
     </div>
 
     <svg id="waveformSvg"></svg>
