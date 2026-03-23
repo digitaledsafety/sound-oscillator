@@ -1,4 +1,5 @@
 // Global variables for audio instruments, loops, and device orientation
+      let userVolume = 0.8; // Global volume control (0.0 to 1.0)
       let instrument = null; // Main oscillator for single continuous note (long press)
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
@@ -18,6 +19,9 @@
         'Chromatic': { rootNote: 'C', intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
         'C Dorian': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 9, 10] },
         'C Lydian': { rootNote: 'C', intervals: [0, 2, 4, 6, 7, 9, 11] },
+        'C Mixolydian': { rootNote: 'C', intervals: [0, 2, 4, 5, 7, 9, 10] },
+        'C Locrian': { rootNote: 'C', intervals: [0, 1, 3, 5, 6, 8, 10] },
+        'C Whole Tone': { rootNote: 'C', intervals: [0, 2, 4, 6, 8, 10] },
         'C Harmonic Minor': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 8, 11] },
         'F Minor': { rootNote: 'F', intervals: [0, 2, 3, 5, 7, 8, 10] },
         'C Minor Pentatonic': { rootNote: 'C', intervals: [0, 3, 5, 7, 10] }, // Added C Minor Pentatonic
@@ -115,13 +119,14 @@
       function startSounds() {
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
-          "threshold": 0,
-          "ratio": 1,
-          "attack": 0.5,
-          "release": 0.1
+          "threshold": -12,
+          "ratio": 4,
+          "attack": 0.003,
+          "release": 0.25
         });
         // Low-shelf filter to give a slight boost to low frequencies
         const lowBump = new Tone.Filter(200, "lowshelf");
+        lowBump.gain.value = 6;
 
         // Chain the effects to the destination output
         Tone.Destination.chain(lowBump, masterCompressor);
@@ -288,15 +293,17 @@
           if (previewLoop) activeSoundCount++;
           activeSoundCount += savedLoops.length;
 
-          let targetVolumeDb = 0; // Default to 0dB (unity gain)
+          // Incorporate userVolume into the base volume
+          let baseVolumeDb = 20 * Math.log10(userVolume);
+          let targetVolumeDb = baseVolumeDb;
 
           if (activeSoundCount > 1) {
               // Calculate linear gain as 1 divided by the number of active sources
-              targetVolumeDb = -20 * Math.log10(activeSoundCount);
+              targetVolumeDb = baseVolumeDb - 20 * Math.log10(activeSoundCount);
           }
 
           // Ensure volume doesn't go too low or produce errors with log of 0
-          if (activeSoundCount === 0) targetVolumeDb = -Infinity; // Mute if no sounds
+          if (activeSoundCount === 0 || userVolume === 0) targetVolumeDb = -Infinity; // Mute if no sounds or volume is 0
           else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
 
           // Apply a smooth ramp to the volume change to avoid clicks/pops
@@ -406,6 +413,8 @@
       document.addEventListener('DOMContentLoaded', () => {
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const clearBtn = document.getElementById('clearBtn');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -446,11 +455,42 @@
             } else {
                 generatedScaleFrequencies = []; // No snapping
             }
-            clearSounds(); // Reset all sounds when scale changes
+
+            // Dynamically update continuous note frequency if it's playing
+            if (instrument) {
+                instrument.frequency.value = getNormalizedValue();
+            }
         }
 
         scaleSelect.addEventListener('change', updateScaleSettings);
-        waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+
+        volumeSlider.addEventListener('input', () => {
+            userVolume = parseFloat(volumeSlider.value);
+            updateMasterVolume();
+        });
+
+        clearBtn.addEventListener('click', (e) => {
+            clearSounds();
+            e.stopPropagation(); // Prevent triggering SVG mousedown
+        });
+
+        waveformSelect.addEventListener('change', () => {
+            const newType = waveformSelect.value;
+            // Update continuous note oscillator if active
+            if (instrument) {
+                instrument.type = newType;
+            }
+            // Update preview loop synth if active
+            if (previewLoop && previewLoop.synth) {
+                previewLoop.synth.oscillator.type = newType;
+            }
+            // Update all saved loops synths
+            savedLoops.forEach(loop => {
+                if (loop.synth) {
+                    loop.synth.oscillator.type = newType;
+                }
+            });
+        });
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
@@ -523,7 +563,7 @@
         // Register the service worker
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js')
+            navigator.serviceWorker.register('service-worker.js')
               .then(registration => {
                 //console.log('ServiceWorker registered');
               })

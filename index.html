@@ -4,7 +4,7 @@
     <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sound Oscillator PWA</title>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/tone"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -86,10 +86,12 @@
           <option value="triangle">Triangle</option>
           <option value="sawtooth">Sawtooth</option>
         </select>
+        <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="mt-3 w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600" title="Adjust Volume">
     </div>
 
     <div id="top-right-controls">
         <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
+        <button id="clearBtn" class="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mt-2 transition-colors duration-200 shadow-md">Clear All</button>
     </div>
 
     <svg id="waveformSvg"></svg>
