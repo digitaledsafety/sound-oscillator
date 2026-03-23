@@ -2,7 +2,7 @@
   "name": "Sound Oscillator",
   "short_name": "Oscillator",
   "description": "A PWA that generates sound based on device orientation with musical scales.",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#f0f4f8",
   "theme_color": "#2c3e50",
