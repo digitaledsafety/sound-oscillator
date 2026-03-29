@@ -2,6 +2,7 @@
       let instrument = null; // Main oscillator for single continuous note (long press)
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
+      let effectsBus = null; // Dedicated bus for all sound sources
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
@@ -113,6 +114,12 @@
 
       // Function to initialize Tone.js audio context and effects
       function startSounds() {
+        // Ensure the audio graph is only initialized once
+        if (effectsBus) return;
+
+        // Initialize effectsBus
+        effectsBus = new Tone.Gain(1);
+
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
           "threshold": 0,
@@ -124,7 +131,7 @@
         const lowBump = new Tone.Filter(200, "lowshelf");
 
         // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor);
+        effectsBus.chain(lowBump, masterCompressor, Tone.Destination);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -187,7 +194,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(effectsBus).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -222,9 +229,11 @@
 
         // Create the synth for the preview loop locally
         const selectedWaveform = document.getElementById('waveformSelect').value;
+        const releaseTime = parseFloat(document.getElementById('releaseSlider').value);
         const synth = new Tone.FMSynth({
-            oscillator: { type: selectedWaveform }
-        }).toDestination();
+            oscillator: { type: selectedWaveform },
+            envelope: { release: releaseTime }
+        }).connect(effectsBus);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -255,9 +264,11 @@
 
         // Create a new FM synth for the loop
         const selectedWaveform = document.getElementById('waveformSelect').value;
+        const releaseTime = parseFloat(document.getElementById('releaseSlider').value);
         const synth = new Tone.FMSynth({
-            oscillator: { type: selectedWaveform }
-        }).toDestination();
+            oscillator: { type: selectedWaveform },
+            envelope: { release: releaseTime }
+        }).connect(effectsBus);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -406,6 +417,8 @@
       document.addEventListener('DOMContentLoaded', () => {
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const releaseSlider = document.getElementById('releaseSlider');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -452,16 +465,45 @@
         scaleSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
 
+        volumeSlider.addEventListener('input', (e) => {
+            Tone.Destination.volume.value = parseFloat(e.target.value);
+        });
+
+        releaseSlider.addEventListener('input', (e) => {
+            const releaseTime = parseFloat(e.target.value);
+            // Update preview loop synth release
+            if (previewLoop && previewLoop.synth) {
+                previewLoop.synth.envelope.release = releaseTime;
+            }
+            // Update all saved loop synths
+            savedLoops.forEach(loop => {
+                if (loop.synth) {
+                    loop.synth.envelope.release = releaseTime;
+                }
+            });
+        });
+
+        // Initialize volume
+        Tone.Destination.volume.value = parseFloat(volumeSlider.value);
+
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
+
+        const noteNameDisplay = document.getElementById('noteName');
+        const noteFreqDisplay = document.getElementById('noteFreq');
 
         // Centralized device orientation listener
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
 
+          const currentFreq = getNormalizedValue();
+          // Update visual display
+          noteNameDisplay.textContent = Tone.Frequency(currentFreq).toNote();
+          noteFreqDisplay.textContent = `${currentFreq.toFixed(2)} Hz`;
+
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
-            instrument.frequency.value = getNormalizedValue(); // This will be snapped if a scale is active
+            instrument.frequency.value = currentFreq; // This will be snapped if a scale is active
           }
         }, true);
 

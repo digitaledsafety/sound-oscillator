@@ -86,9 +86,21 @@
           <option value="triangle">Triangle</option>
           <option value="sawtooth">Sawtooth</option>
         </select>
+        <div class="mt-3 flex flex-col gap-1">
+          <label for="volumeSlider" class="text-xs font-semibold text-gray-600">Volume</label>
+          <input type="range" id="volumeSlider" min="-60" max="0" value="-12" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
+        <div class="mt-2 flex flex-col gap-1">
+          <label for="releaseSlider" class="text-xs font-semibold text-gray-600">Release</label>
+          <input type="range" id="releaseSlider" min="0.1" max="2.0" step="0.1" value="0.5" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
     </div>
 
     <div id="top-right-controls">
+        <div id="noteDisplay" class="bg-white/90 px-3 py-2 rounded-lg shadow-md text-sm font-mono text-gray-800 flex flex-col items-end">
+            <span id="noteName" class="text-lg font-bold">---</span>
+            <span id="noteFreq" class="text-xs text-gray-500">0.00 Hz</span>
+        </div>
         <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
     </div>
 
