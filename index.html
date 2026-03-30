@@ -79,13 +79,14 @@
   </head>
   <body>
     <div id="top-left-controls">
-        <select id="scaleSelect" title="Select Musical Scale"></select>
-        <select id="waveformSelect" class="mt-2" title="Select Waveform">
+        <select id="scaleSelect" title="Select Musical Scale" aria-label="Select Musical Scale"></select>
+        <select id="waveformSelect" class="mt-2" title="Select Waveform" aria-label="Select Waveform">
           <option value="sine">Sine</option>
           <option value="square">Square</option>
           <option value="triangle">Triangle</option>
           <option value="sawtooth">Sawtooth</option>
         </select>
+        <div id="frequencyDisplay" class="mt-2 text-xs text-gray-600 font-mono">0.00 Hz</div>
     </div>
 
     <div id="top-right-controls">

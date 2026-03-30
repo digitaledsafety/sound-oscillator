@@ -23,7 +23,10 @@
         'C Minor Pentatonic': { rootNote: 'C', intervals: [0, 3, 5, 7, 10] }, // Added C Minor Pentatonic
         'G Minor Pentatonic': { rootNote: 'G', intervals: [0, 3, 5, 7, 10] }, // Added G Minor Pentatonic
         'Dorian Minor': { rootNote: 'D', intervals: [0, 2, 3, 5, 7, 9, 10] }, // Added Dorian Minor (same as Dorian, but explicit name)
-        'Phrygian Minor': { rootNote: 'E', intervals: [0, 1, 3, 5, 7, 8, 10] } // Added Phrygian Minor
+        'Phrygian Minor': { rootNote: 'E', intervals: [0, 1, 3, 5, 7, 8, 10] }, // Added Phrygian Minor
+        'Mixolydian': { rootNote: 'G', intervals: [0, 2, 4, 5, 7, 9, 10] },
+        'Aeolian': { rootNote: 'A', intervals: [0, 2, 3, 5, 7, 8, 10] },
+        'Locrian': { rootNote: 'B', intervals: [0, 1, 3, 5, 6, 8, 10] }
       };
 
       let generatedScaleFrequencies = []; // Cache for frequencies of the current scale
@@ -112,7 +115,7 @@
       }
 
       // Function to initialize Tone.js audio context and effects
-      function startSounds() {
+      async function startSounds() {
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
           "threshold": 0,
@@ -123,8 +126,15 @@
         // Low-shelf filter to give a slight boost to low frequencies
         const lowBump = new Tone.Filter(200, "lowshelf");
 
+        // Reverb for spatial depth
+        const reverb = new Tone.Reverb({
+          decay: 2,
+          wet: 0.3
+        });
+        await reverb.ready;
+
         // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor);
+        Tone.Destination.chain(lowBump, masterCompressor, reverb);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -217,6 +227,7 @@
           if (previewLoop.synth) { // Dispose of the synth if it exists
               previewLoop.synth.dispose();
           }
+          previewLoop.dispose();
           previewLoop = null;
         }
 
@@ -380,6 +391,14 @@
         // Exit old bars
         bars.exit().remove();
 
+        // Throttled real-time frequency/note display update
+        const freq = getNormalizedValue();
+        const display = document.getElementById('frequencyDisplay');
+        if (display) {
+          const note = Tone.Frequency(freq).toNote();
+          display.textContent = `${freq.toFixed(2)} Hz (${note})`;
+        }
+
         // Request the next frame
         requestAnimationFrame(updateWaveformVisualization);
       }
@@ -459,9 +478,10 @@
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
 
+          const freq = getNormalizedValue();
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
-            instrument.frequency.value = getNormalizedValue(); // This will be snapped if a scale is active
+            instrument.frequency.value = freq; // This will be snapped if a scale is active
           }
         }, true);
 
@@ -503,7 +523,7 @@
               return; // Long press already handled
           }
 
-          const currentTime = Tone.now() * 1000; // Convert Tone.now() seconds to milliseconds
+          const currentTime = performance.now(); // Use performance.now() for UI event timing
           if (currentTime - lastTapTime < doubleTapThreshold) {
               // This is a double tap
               clearSounds();
