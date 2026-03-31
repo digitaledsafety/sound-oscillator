@@ -6,6 +6,12 @@
       let beta = 0; // Device orientation values (pitch)
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
+      // Audio effects nodes (persisted across sessions to avoid repeated initialization overhead)
+      let masterCompressor = null;
+      let lowBump = null;
+      let reverb = null;
+      let isAudioChainInitialized = false;
+
       // --- Scale-related Global Variables and Definitions ---
       let currentScaleConfig = null; // Holds the { rootNote, intervals } for the selected scale
 
@@ -26,7 +32,9 @@
         'Phrygian Minor': { rootNote: 'E', intervals: [0, 1, 3, 5, 7, 8, 10] }, // Added Phrygian Minor
         'Mixolydian': { rootNote: 'G', intervals: [0, 2, 4, 5, 7, 9, 10] },
         'Aeolian': { rootNote: 'A', intervals: [0, 2, 3, 5, 7, 8, 10] },
-        'Locrian': { rootNote: 'B', intervals: [0, 1, 3, 5, 6, 8, 10] }
+        'Locrian': { rootNote: 'B', intervals: [0, 1, 3, 5, 6, 8, 10] },
+        'Whole Tone': { rootNote: 'C', intervals: [0, 2, 4, 6, 8, 10] },
+        'C Melodic Minor': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 9, 11] }
       };
 
       let generatedScaleFrequencies = []; // Cache for frequencies of the current scale
@@ -116,31 +124,38 @@
 
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
-        // Master compressor to prevent audio clipping and normalize volume
-        const masterCompressor = new Tone.Compressor({
+        // Ensure effects are only initialized once
+        if (isAudioChainInitialized) return;
+
+        // Initialize Master compressor to prevent audio clipping and normalize volume
+        masterCompressor = new Tone.Compressor({
           "threshold": 0,
           "ratio": 1,
           "attack": 0.5,
           "release": 0.1
         });
-        // Low-shelf filter to give a slight boost to low frequencies
-        const lowBump = new Tone.Filter(200, "lowshelf");
 
-        // Reverb for spatial depth
-        const reverb = new Tone.Reverb({
+        // Initialize Low-shelf filter to give a slight boost to low frequencies
+        lowBump = new Tone.Filter(200, "lowshelf");
+
+        // Initialize Reverb for spatial depth
+        reverb = new Tone.Reverb({
           decay: 2,
           wet: 0.3
         });
         await reverb.ready;
 
-        // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor, reverb);
+        // Correctly route the audio chain:
+        // Connect the effects chain to the master output (Tone.Destination)
+        // Note: lowBump, masterCompressor, and reverb are now in a serial chain
+        lowBump.chain(masterCompressor, reverb, Tone.Destination);
 
-        // Initialize waveform analyzer and connect it to Tone.Destination
+        // Initialize waveform analyzer and connect it to the reverb output (just before Destination)
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
-        Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
+        reverb.connect(waveformAnalyzer);
 
-        //console.log("Tone.js audio context ready to start on interaction.");
+        isAudioChainInitialized = true;
+        //console.log("Tone.js audio context ready with initialized effects.");
       }
 
       // Function to stop all active sounds and clear Tone.js transport
@@ -197,7 +212,8 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          // Connect to lowBump, which starts the master effects chain
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(lowBump).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -235,7 +251,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(lowBump);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -268,7 +284,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(lowBump);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -311,7 +327,7 @@
           else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
 
           // Apply a smooth ramp to the volume change to avoid clicks/pops
-          Tone.Destination.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
+          Tone.getDestination().volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
           //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
       }
 
@@ -394,9 +410,13 @@
         // Throttled real-time frequency/note display update
         const freq = getNormalizedValue();
         const display = document.getElementById('frequencyDisplay');
+        const noteDisplay = document.getElementById('noteDisplay');
         if (display) {
           const note = Tone.Frequency(freq).toNote();
           display.textContent = `${freq.toFixed(2)} Hz (${note})`;
+          if (noteDisplay) {
+            noteDisplay.textContent = note;
+          }
         }
 
         // Request the next frame
@@ -470,6 +490,17 @@
 
         scaleSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+
+        // Random Scale button logic
+        const randomScaleBtn = document.getElementById('randomScaleBtn');
+        if (randomScaleBtn) {
+            randomScaleBtn.addEventListener('click', () => {
+                const scaleNames = Object.keys(availableScales);
+                const randomScale = scaleNames[Math.floor(Math.random() * scaleNames.length)];
+                scaleSelect.value = randomScale;
+                updateScaleSettings();
+            });
+        }
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
