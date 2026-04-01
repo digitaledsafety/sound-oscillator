@@ -21,14 +21,23 @@ def test_js_logic_integrity():
     if 'await reverb.ready' not in content:
         print("Missing await reverb.ready")
         return False
-    # Check that reverb instance doesn't have .toDestination() directly in startSounds
-    # In startSounds function:
-    # const reverb = new Tone.Reverb({
-    #   decay: 2,
-    #   wet: 0.3
-    # });
-    # if '}).toDestination();' in content:
-    #   Note: this might be too broad if other things have it.
+
+    # Check for Master Gain and User Volume
+    if 'let masterGain = null;' not in content:
+        print("Missing masterGain variable")
+        return False
+    if 'let userVolume = 0.7;' not in content:
+        print("Missing userVolume variable")
+        return False
+    if 'masterGain = new Tone.Gain(1);' not in content:
+        print("Missing masterGain initialization")
+        return False
+    if 'masterGain.chain(' not in content:
+        print("Missing masterGain chain routing")
+        return False
+    if '.connect(masterGain)' not in content:
+        print("Missing connections to masterGain")
+        return False
 
     # Check for new scales
     if "'Mixolydian'" not in content:

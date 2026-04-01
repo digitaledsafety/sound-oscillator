@@ -2,6 +2,8 @@
       let instrument = null; // Main oscillator for single continuous note (long press)
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
+      let masterGain = null; // Master gain node to control overall volume and serve as entry point for effects
+      let userVolume = 0.7; // Default user volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
@@ -116,31 +118,37 @@
 
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
+        if (masterGain) return; // Prevent multiple initializations
+
+        // Master gain node to control overall volume and receive all audio signals
+        masterGain = new Tone.Gain(1);
+
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
-          "threshold": 0,
-          "ratio": 1,
-          "attack": 0.5,
-          "release": 0.1
+          "threshold": -12,
+          "ratio": 4,
+          "attack": 0.003,
+          "release": 0.25
         });
         // Low-shelf filter to give a slight boost to low frequencies
-        const lowBump = new Tone.Filter(200, "lowshelf");
+        const lowBump = new Tone.Filter(150, "lowshelf");
 
         // Reverb for spatial depth
         const reverb = new Tone.Reverb({
-          decay: 2,
-          wet: 0.3
+          decay: 2.5,
+          wet: 0.2
         });
         await reverb.ready;
 
         // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor, reverb);
+        // Routing: masterGain -> lowBump -> masterCompressor -> reverb -> Tone.Destination
+        masterGain.chain(lowBump, masterCompressor, reverb, Tone.Destination);
 
-        // Initialize waveform analyzer and connect it to Tone.Destination
+        // Initialize waveform analyzer and connect it to Tone.Destination to visualize final output
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
         Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
 
-        //console.log("Tone.js audio context ready to start on interaction.");
+        //console.log("Tone.js audio context and master chain ready.");
       }
 
       // Function to stop all active sounds and clear Tone.js transport
@@ -197,7 +205,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterGain).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -235,7 +243,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterGain);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -268,7 +276,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterGain);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -293,26 +301,39 @@
        * Adjusts the master volume based on the number of active sound sources to prevent peaking.
        * Uses a logarithmic reduction (inverse of linear gain) for each additional track.
        */
+      /**
+       * Adjusts the master volume based on the number of active sound sources to prevent peaking.
+       * Uses a logarithmic reduction (inverse of linear gain) for each additional track,
+       * and incorporates the user-selected master volume.
+       */
       function updateMasterVolume() {
+          if (!masterGain) return; // Wait until audio chain is initialized
+
           let activeSoundCount = 0;
           if (instrument) activeSoundCount++;
           if (previewLoop) activeSoundCount++;
           activeSoundCount += savedLoops.length;
 
-          let targetVolumeDb = 0; // Default to 0dB (unity gain)
+          // Base volume from user selection (normalized 0 to 1)
+          // We convert this to a linear gain factor.
+          const baseGain = userVolume;
+
+          let totalGain = baseGain;
 
           if (activeSoundCount > 1) {
-              // Calculate linear gain as 1 divided by the number of active sources
-              targetVolumeDb = -20 * Math.log10(activeSoundCount);
+              // Reduce gain proportionally to the number of sources to avoid clipping
+              // totalGain = baseGain / activeSoundCount;
+              // A slightly more musical reduction using square root for power compensation
+              totalGain = baseGain / Math.sqrt(activeSoundCount);
           }
 
-          // Ensure volume doesn't go too low or produce errors with log of 0
-          if (activeSoundCount === 0) targetVolumeDb = -Infinity; // Mute if no sounds
-          else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
+          if (activeSoundCount === 0) {
+              totalGain = 0;
+          }
 
           // Apply a smooth ramp to the volume change to avoid clicks/pops
-          Tone.Destination.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
-          //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
+          masterGain.gain.rampTo(totalGain, 0.1);
+          //console.log(`Active sounds: ${activeSoundCount}. User volume: ${userVolume}. Master gain: ${totalGain.toFixed(3)} (${Tone.gainToDb(totalGain).toFixed(2)} dB)`);
       }
 
 
@@ -425,6 +446,8 @@
       document.addEventListener('DOMContentLoaded', () => {
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const clearAllBtn = document.getElementById('clearAllBtn');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -470,6 +493,15 @@
 
         scaleSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+
+        volumeSlider.addEventListener('input', (e) => {
+          userVolume = parseFloat(e.target.value);
+          updateMasterVolume();
+        });
+
+        clearAllBtn.addEventListener('click', () => {
+          clearSounds();
+        });
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
@@ -540,18 +572,6 @@
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
         });
 
-        // Register the service worker
-        if ('serviceWorker' in navigator) {
-          window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js')
-              .then(registration => {
-                //console.log('ServiceWorker registered');
-              })
-              .catch(registrationError => {
-                console.error('ServiceWorker registration failed:', registrationError);
-              });
-          });
-        }
 
         // Call the function to request the wake lock
         requestWakeLock();

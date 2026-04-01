@@ -4,7 +4,7 @@
     <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sound Oscillator PWA</title>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/tone"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -86,15 +86,36 @@
           <option value="triangle">Triangle</option>
           <option value="sawtooth">Sawtooth</option>
         </select>
+        <div class="mt-2 flex flex-col">
+          <label for="volumeSlider" class="text-xs text-gray-500 mb-1">Master Volume</label>
+          <input id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.7" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
         <div id="frequencyDisplay" class="mt-2 text-xs text-gray-600 font-mono">0.00 Hz</div>
     </div>
 
     <div id="top-right-controls">
+        <button id="clearAllBtn" class="bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-2 px-4 rounded-full shadow-md transition-colors duration-200 uppercase tracking-wider mb-2">
+          Clear All
+        </button>
         <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
     </div>
 
     <svg id="waveformSvg"></svg>
 
+    <script>
+      // Register the service worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('service-worker.js')
+            .then(registration => {
+              //console.log('ServiceWorker registered');
+            })
+            .catch(registrationError => {
+              console.error('ServiceWorker registration failed:', registrationError);
+            });
+        });
+      }
+    </script>
     <script src="js/main.js"></script>
   </body>
 </html>
