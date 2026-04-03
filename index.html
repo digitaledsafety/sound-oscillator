@@ -78,6 +78,18 @@
     </style>
   </head>
   <body>
+    <!-- Start Overlay -->
+    <div id="startOverlay" class="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900 bg-opacity-95 text-white transition-opacity duration-500">
+        <div class="text-center p-8 bg-gray-800 rounded-xl shadow-2xl border border-gray-700 max-w-md">
+            <h1 class="text-3xl font-bold mb-4">Sound Oscillator</h1>
+            <p class="text-gray-400 mb-8 font-light">A PWA that generates soundscapes based on your device's orientation. Please tap to begin.</p>
+            <button id="startButton" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 px-12 rounded-full text-xl transition-all transform hover:scale-105 active:scale-95 shadow-lg">
+                Start Experience
+            </button>
+            <p class="mt-6 text-[10px] text-gray-500 uppercase tracking-widest italic">Requires audio & orientation permissions</p>
+        </div>
+    </div>
+
     <div id="top-left-controls">
         <select id="scaleSelect" title="Select Musical Scale" aria-label="Select Musical Scale"></select>
         <select id="waveformSelect" class="mt-2" title="Select Waveform" aria-label="Select Waveform">
@@ -87,10 +99,22 @@
           <option value="sawtooth">Sawtooth</option>
         </select>
         <div id="frequencyDisplay" class="mt-2 text-xs text-gray-600 font-mono">0.00 Hz</div>
+        <div class="mt-4 flex flex-col gap-1 w-full">
+            <label for="volumeSlider" class="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Volume</label>
+            <input type="range" id="volumeSlider" min="-40" max="0" value="-6" step="1" class="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
     </div>
 
     <div id="top-right-controls">
-        <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
+        <div class="flex items-center gap-2">
+            <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
+            <div id="betaDisplay" class="text-xs text-white font-mono min-w-[3rem]">0°</div>
+        </div>
+        <div class="flex items-center gap-2 mt-2">
+            <span class="bg-blue-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Gamma</span>
+            <div id="gammaDisplay" class="text-xs text-white font-mono min-w-[3rem]">0°</div>
+        </div>
+        <div id="panningDisplay" class="text-xs text-gray-400 font-mono mt-1 text-right">Pan: 0.00</div>
     </div>
 
     <svg id="waveformSvg"></svg>
