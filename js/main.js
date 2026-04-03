@@ -4,6 +4,12 @@
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
+      let gamma = 0; // Device orientation values (panning)
+      let masterBus = null;
+      let panner = null;
+      let masterCompressor = null;
+      let lowBump = null;
+      let reverb = null;
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
       // --- Scale-related Global Variables and Definitions ---
@@ -116,31 +122,37 @@
 
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
+        if (masterBus) return; // Prevent multiple initializations
+
+        masterBus = new Tone.Gain(1);
+        panner = new Tone.StereoPanner(0);
+
         // Master compressor to prevent audio clipping and normalize volume
-        const masterCompressor = new Tone.Compressor({
-          "threshold": 0,
-          "ratio": 1,
-          "attack": 0.5,
+        masterCompressor = new Tone.Compressor({
+          "threshold": -10,
+          "ratio": 4,
+          "attack": 0.01,
           "release": 0.1
         });
+
         // Low-shelf filter to give a slight boost to low frequencies
-        const lowBump = new Tone.Filter(200, "lowshelf");
+        lowBump = new Tone.Filter(200, "lowshelf");
 
         // Reverb for spatial depth
-        const reverb = new Tone.Reverb({
+        reverb = new Tone.Reverb({
           decay: 2,
-          wet: 0.3
+          wet: 0.2
         });
         await reverb.ready;
 
-        // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor, reverb);
+        // Proper routing: masterBus -> lowBump -> masterCompressor -> reverb -> panner -> Tone.Destination
+        masterBus.chain(lowBump, masterCompressor, reverb, panner, Tone.Destination);
 
-        // Initialize waveform analyzer and connect it to Tone.Destination
-        waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
-        Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
+        // Initialize waveform analyzer and connect it to Tone.Destination to visualize final output
+        waveformAnalyzer = new Tone.Waveform(1024);
+        Tone.Destination.connect(waveformAnalyzer);
 
-        //console.log("Tone.js audio context ready to start on interaction.");
+        //console.log("Tone.js audio context and routing initialized.");
       }
 
       // Function to stop all active sounds and clear Tone.js transport
@@ -197,7 +209,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterBus).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -235,7 +247,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterBus);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -268,7 +280,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterBus);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -310,9 +322,11 @@
           if (activeSoundCount === 0) targetVolumeDb = -Infinity; // Mute if no sounds
           else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
 
-          // Apply a smooth ramp to the volume change to avoid clicks/pops
-          Tone.Destination.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
-          //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
+          // Apply a smooth ramp to the volume change on the master bus
+          if (masterBus) {
+              masterBus.volume.rampTo(targetVolumeDb, 0.1);
+          }
+          //console.log(`Active sounds: ${activeSoundCount}. Master bus volume set to: ${targetVolumeDb.toFixed(2)} dB`);
       }
 
 
@@ -361,34 +375,28 @@
         const barWidth = svgWidth / barCount;
 
         // Prepare data for bars (average amplitude for each segment)
-        const barData = [];
         const visualGain = 2.0; // Factor to visually amplify low signals
-        for (let i = 0; i < barCount; i++) {
-          let sum = 0;
-          for (let j = 0; j < samplesPerBar; j++) {
-            // Apply visualGain here to amplify for visualization, and clamp to 1.0
-            sum += Math.min(1.0, Math.abs(waveformArray[i * samplesPerBar + j]) * visualGain);
-          }
-          barData.push(sum / samplesPerBar); // Average amplitude for the bar
-        }
+        const barData = Array.from({ length: barCount }, (_, i) => {
+            let sum = 0;
+            const start = i * samplesPerBar;
+            for (let j = 0; j < samplesPerBar; j++) {
+                sum += Math.min(1.0, Math.abs(waveformArray[start + j]) * visualGain);
+            }
+            return sum / samplesPerBar;
+        });
 
         // D3 update pattern for rectangles
-        const bars = waveformSvg.selectAll(".bar") // Select by class now
-          .data(barData);
+        const bars = waveformSvg.selectAll(".bar").data(barData);
 
-        // Enter new bars
         bars.enter().append("rect")
-          .attr("class", "bar") // Assign class for styling
-          .attr("x", (d, i) => i * barWidth)
-          .attr("width", barWidth * 0.8) // Slightly smaller width for gaps
-          .merge(bars) // Merge enter and update selections
-          // Removed transition for real-time performance
-          .attr("x", (d, i) => i * barWidth + (barWidth * 0.1)) // Adjust x for centering with gap
-          // Ensure bars have a minimum height and are positioned from the bottom
+          .attr("class", "bar")
+          .attr("width", barWidth * 0.8)
+          .merge(bars)
+          .attr("x", (d, i) => i * barWidth + (barWidth * 0.1))
           .attr("y", d => svgHeight - Math.max(minBarHeight, d * svgHeight))
           .attr("height", d => Math.max(minBarHeight, d * svgHeight))
-          .attr("fill", d => colorScale(d)); // 'd' is the amplitude value for each bar
-        // Exit old bars
+          .attr("fill", d => colorScale(d));
+
         bars.exit().remove();
 
         // Throttled real-time frequency/note display update
@@ -476,69 +484,33 @@
 
         // Centralized device orientation listener
         window.addEventListener("deviceorientation", (event) => {
-          beta = event.beta !== null ? event.beta.valueOf() : beta;
+          // Check if event properties are valid numbers
+          if (event.beta !== null && typeof event.beta !== 'undefined') beta = event.beta;
+          if (event.gamma !== null && typeof event.gamma !== 'undefined') gamma = event.gamma;
 
           const freq = getNormalizedValue();
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
             instrument.frequency.value = freq; // This will be snapped if a scale is active
           }
+
+          // Update stereo panning based on gamma (-90 to 90 degrees)
+          if (panner) {
+            // Map gamma to -1 to 1 range
+            let panValue = Math.max(-1, Math.min(1, gamma / 45)); // Sensitive range between -45 and 45 degrees
+            panner.pan.rampTo(panValue, 0.1);
+
+            // Update orientation displays
+            const betaDisplay = document.getElementById('betaDisplay');
+            if (betaDisplay) betaDisplay.textContent = `${Math.round(beta)}°`;
+            const gammaDisplay = document.getElementById('gammaDisplay');
+            if (gammaDisplay) gammaDisplay.textContent = `${Math.round(gamma)}°`;
+            const panningDisplay = document.getElementById('panningDisplay');
+            if (panningDisplay) panningDisplay.textContent = `Pan: ${panValue.toFixed(2)}`;
+          }
         }, true);
 
-        // Event listeners for tap (click) and long press on the SVG visualizer
-        waveformSvg.on("mousedown touchstart", async function() {
-          // Request permission for device orientation (required on iOS)
-          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            try {
-              const permission = await DeviceOrientationEvent.requestPermission();
-              //console.log('DeviceOrientation permission status:', permission);
-            } catch (err) {
-              console.error('Error requesting DeviceOrientation permission:', err);
-            }
-          }
-
-          // Ensure Tone.js context is started on first interaction
-          if (Tone.context.state !== 'running') {
-            try {
-              await Tone.start();
-              if (Tone.context.state !== 'running') {
-                await Tone.context.resume();
-              }
-            } catch (e) {
-              console.error("Error starting/resuming Tone.js context:", e);
-            }
-          }
-
-          isLongPress = false;
-          pressTimer = setTimeout(() => {
-            isLongPress = true;
-            toggleContinuousNote(); // Long press toggles continuous note
-          }, longPressDuration);
-        });
-
-        waveformSvg.on("mouseup touchend", function(event) {
-          clearTimeout(pressTimer); // Clear long press timer
-          if (isLongPress) {
-              isLongPress = false; // Reset long press flag
-              return; // Long press already handled
-          }
-
-          const currentTime = performance.now(); // Use performance.now() for UI event timing
-          if (currentTime - lastTapTime < doubleTapThreshold) {
-              // This is a double tap
-              clearSounds();
-              lastTapTime = 0; // Reset to prevent triple taps from being double taps
-          } else {
-              // This is a single tap (or the first tap of a potential double tap)
-              if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
-                  addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
-              } else {
-                  startPreviewLoop(); // Otherwise, start the dynamic preview loop
-              }
-              lastTapTime = currentTime;
-          }
-          event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
-        });
+        // Old interaction handlers removed in favor of modern Pointer Events at the end of script
 
         // Register the service worker
         if ('serviceWorker' in navigator) {
@@ -558,4 +530,80 @@
         startSounds(); // Prepare Tone.js, but don't start audio context yet
         updateWaveformVisualization(); // Start the D3 visualization loop
         updateMasterVolume(); // Initial volume update on load
+
+        // --- Interaction Logic Modernization ---
+        const startOverlay = document.getElementById('startOverlay');
+        const startButton = document.getElementById('startButton');
+        const volumeSlider = document.getElementById('volumeSlider');
+
+        // Volume slider control
+        volumeSlider.addEventListener('input', (e) => {
+            const vol = parseFloat(e.target.value);
+            // We use Tone.Destination.volume as a master trim on top of the dynamic scaling in updateMasterVolume
+            Tone.Destination.volume.rampTo(vol, 0.1);
+        });
+
+        // Click handler for the start experience button
+        startButton.addEventListener('click', async () => {
+            // Request permission for device orientation (required on iOS)
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const permission = await DeviceOrientationEvent.requestPermission();
+                    //console.log('DeviceOrientation permission status:', permission);
+                } catch (err) {
+                    console.error('Error requesting DeviceOrientation permission:', err);
+                }
+            }
+
+            // Ensure Tone.js context is started
+            try {
+                await Tone.start();
+                // Initialize audio routing
+                await startSounds();
+                // Hide overlay
+                startOverlay.style.opacity = '0';
+                setTimeout(() => {
+                    startOverlay.style.display = 'none';
+                }, 500);
+            } catch (e) {
+                console.error("Error starting Tone.js context:", e);
+            }
+        });
+
+        // Use Pointer Events for the visualizer interaction
+        waveformSvg.on("pointerdown", async function(event) {
+          isLongPress = false;
+          pressTimer = setTimeout(() => {
+            isLongPress = true;
+            toggleContinuousNote();
+          }, longPressDuration);
+        });
+
+        waveformSvg.on("pointerup", function(event) {
+          clearTimeout(pressTimer);
+          if (isLongPress) {
+              isLongPress = false;
+              return;
+          }
+
+          const currentTime = performance.now();
+          if (currentTime - lastTapTime < doubleTapThreshold) {
+              clearSounds();
+              lastTapTime = 0;
+          } else {
+              if (instrument || previewLoop || savedLoops.length > 0) {
+                  addFixedLoop();
+              } else {
+                  startPreviewLoop();
+              }
+              lastTapTime = currentTime;
+          }
+          // Pointer events are less likely to need preventDefault for basic clicks,
+          // but we keep it for consistency with expected mobile behavior.
+          if (event.pointerType === 'touch') event.preventDefault();
+        });
+
+        // Remove old event listeners
+        waveformSvg.on("mousedown touchstart", null);
+        waveformSvg.on("mouseup touchend", null);
       });
