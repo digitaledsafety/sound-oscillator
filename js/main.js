@@ -1,5 +1,6 @@
 // Global variables for audio instruments, loops, and device orientation
       let instrument = null; // Main oscillator for single continuous note (long press)
+      let effectsBus = null; // Master effects bus
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let wakeLock = null; // Screen wake lock object
@@ -116,6 +117,11 @@
 
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
+        if (effectsBus) return; // Idempotency check
+
+        // Initialize the master effects bus
+        effectsBus = new Tone.Gain();
+
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
           "threshold": 0,
@@ -134,7 +140,7 @@
         await reverb.ready;
 
         // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor, reverb);
+        effectsBus.chain(lowBump, masterCompressor, reverb, Tone.Destination);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -197,7 +203,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(effectsBus).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -235,7 +241,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(effectsBus);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -268,7 +274,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(effectsBus);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -425,6 +431,7 @@
       document.addEventListener('DOMContentLoaded', () => {
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
+        const clearAllBtn = document.getElementById('clearAllBtn');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -470,6 +477,9 @@
 
         scaleSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', () => clearSounds());
+        }
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
@@ -543,7 +553,7 @@
         // Register the service worker
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js')
+            navigator.serviceWorker.register('./service-worker.js')
               .then(registration => {
                 //console.log('ServiceWorker registered');
               })

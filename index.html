@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <meta charset="UTF-8">
     <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sound Oscillator PWA</title>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="./manifest.json">
     <script src="https://unpkg.com/tone"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -87,6 +88,9 @@
           <option value="sawtooth">Sawtooth</option>
         </select>
         <div id="frequencyDisplay" class="mt-2 text-xs text-gray-600 font-mono">0.00 Hz</div>
+        <button id="clearAllBtn" class="mt-4 bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-2 px-4 rounded shadow transition-colors w-full" title="Clear All Sounds" aria-label="Clear All Sounds">
+          Clear All
+        </button>
     </div>
 
     <div id="top-right-controls">

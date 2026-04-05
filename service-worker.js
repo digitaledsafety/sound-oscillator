@@ -1,18 +1,21 @@
 const CACHE_NAME = 'sound-oscillator-cache-v1';
 const urlsToCache = [
-  'index.html',
-  'js/main.js',
+  './',
+  './index.html',
+  './js/main.js',
+  './manifest.json',
+  './favicon.ico',
   'https://unpkg.com/tone',
   'https://cdn.tailwindcss.com',
   'https://d3js.org/d3.v7.min.js',
-  'icons/icon-96x96.png',
-  'icons/icon-128x128.png',
-  'icons/icon-144x144.png',
-  'icons/icon-152x152.png',
-  'icons/icon-192x192.png',
-  'icons/icon-256x256.png',
-  'icons/icon-384x384.png',
-  'icons/icon-512x512.png'
+  './icons/icon-96x96.png',
+  './icons/icon-128x128.png',
+  './icons/icon-144x144.png',
+  './icons/icon-152x152.png',
+  './icons/icon-192x192.png',
+  './icons/icon-256x256.png',
+  './icons/icon-384x384.png',
+  './icons/icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {
