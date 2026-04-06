@@ -6,6 +6,13 @@
       let beta = 0; // Device orientation values (pitch)
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
+      // Effect nodes and initialization flag
+      let masterGain = null;
+      let masterCompressor = null;
+      let lowBump = null;
+      let reverb = null;
+      let isAudioChainInitialized = false;
+
       // --- Scale-related Global Variables and Definitions ---
       let currentScaleConfig = null; // Holds the { rootNote, intervals } for the selected scale
 
@@ -26,7 +33,10 @@
         'Phrygian Minor': { rootNote: 'E', intervals: [0, 1, 3, 5, 7, 8, 10] }, // Added Phrygian Minor
         'Mixolydian': { rootNote: 'G', intervals: [0, 2, 4, 5, 7, 9, 10] },
         'Aeolian': { rootNote: 'A', intervals: [0, 2, 3, 5, 7, 8, 10] },
-        'Locrian': { rootNote: 'B', intervals: [0, 1, 3, 5, 6, 8, 10] }
+        'Locrian': { rootNote: 'B', intervals: [0, 1, 3, 5, 6, 8, 10] },
+        'Phrygian Dominant': { rootNote: 'E', intervals: [0, 1, 4, 5, 7, 8, 10] },
+        'Whole Tone': { rootNote: 'C', intervals: [0, 2, 4, 6, 8, 10] },
+        'Diminished': { rootNote: 'C', intervals: [0, 2, 3, 5, 6, 8, 9, 11] }
       };
 
       let generatedScaleFrequencies = []; // Cache for frequencies of the current scale
@@ -116,31 +126,38 @@
 
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
+        if (isAudioChainInitialized) return;
+        isAudioChainInitialized = true; // Mark as initialized immediately to prevent race conditions
+
+        // Master gain node for all instruments
+        masterGain = new Tone.Gain();
+
         // Master compressor to prevent audio clipping and normalize volume
-        const masterCompressor = new Tone.Compressor({
+        masterCompressor = new Tone.Compressor({
           "threshold": 0,
           "ratio": 1,
           "attack": 0.5,
           "release": 0.1
         });
         // Low-shelf filter to give a slight boost to low frequencies
-        const lowBump = new Tone.Filter(200, "lowshelf");
+        lowBump = new Tone.Filter(200, "lowshelf");
 
         // Reverb for spatial depth
-        const reverb = new Tone.Reverb({
+        reverb = new Tone.Reverb({
           decay: 2,
           wet: 0.3
         });
         await reverb.ready;
 
         // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor, reverb);
+        masterGain.chain(lowBump, masterCompressor, reverb, Tone.Destination);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
         Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
 
-        //console.log("Tone.js audio context ready to start on interaction.");
+        isAudioChainInitialized = true;
+        //console.log("Tone.js audio context and effects chain initialized.");
       }
 
       // Function to stop all active sounds and clear Tone.js transport
@@ -182,11 +199,12 @@
       }
 
       // Function to toggle the continuous single note instrument (for long press)
-      function toggleContinuousNote() {
+      async function toggleContinuousNote() {
         // Ensure Tone.js context is started on first interaction
         if (Tone.context.state !== 'running') {
-          Tone.start();
+          await Tone.start();
         }
+        await startSounds();
 
         if (instrument) {
           // If instrument is active, stop it
@@ -197,7 +215,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterGain).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -209,10 +227,11 @@
       }
 
       // Function to start the dynamic pulsing preview loop (for initial short tap)
-      function startPreviewLoop() {
+      async function startPreviewLoop() {
         if (Tone.context.state !== 'running') {
-          Tone.start();
+          await Tone.start();
         }
+        await startSounds();
 
         // Ensure no continuous instrument is playing
         if (instrument) {
@@ -235,7 +254,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterGain);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -255,11 +274,12 @@
       }
 
       // Function to add a fixed loop (tone is saved at time of touch)
-      function addFixedLoop() {
+      async function addFixedLoop() {
         // Ensure Tone.js context is started on first interaction
         if (Tone.context.state !== 'running') {
-          Tone.start();
+          await Tone.start();
         }
+        await startSounds();
 
         // Capture the current normalized frequency when the tap occurs (this will be snapped if a scale is active)
         const fixedFrequency = getNormalizedValue(); // Capture the value ONCE here
@@ -268,7 +288,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterGain);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -399,6 +419,12 @@
           display.textContent = `${freq.toFixed(2)} Hz (${note})`;
         }
 
+        // Update beta display
+        const betaDisplay = document.getElementById('betaDisplay');
+        if (betaDisplay) {
+          betaDisplay.textContent = `Beta: ${beta.toFixed(1)}°`;
+        }
+
         // Request the next frame
         requestAnimationFrame(updateWaveformVisualization);
       }
@@ -481,7 +507,7 @@
           const freq = getNormalizedValue();
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
-            instrument.frequency.value = freq; // This will be snapped if a scale is active
+            instrument.frequency.rampTo(freq, 0.05); // This will be snapped if a scale is active
           }
         }, true);
 
@@ -555,7 +581,15 @@
 
         // Call the function to request the wake lock
         requestWakeLock();
-        startSounds(); // Prepare Tone.js, but don't start audio context yet
+
+        // Listen for visibility changes to re-acquire the wake lock
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            requestWakeLock();
+          }
+        });
+
+        // Prepare audio chain but only after user interaction in startPreviewLoop, etc.
         updateWaveformVisualization(); // Start the D3 visualization loop
         updateMasterVolume(); // Initial volume update on load
       });
