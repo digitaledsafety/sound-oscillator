@@ -30,6 +30,21 @@ def test_js_logic_integrity():
     # if '}).toDestination();' in content:
     #   Note: this might be too broad if other things have it.
 
+    # Check for masterGain variable
+    if 'let masterGain = null;' not in content:
+        print("Missing masterGain variable declaration")
+        return False
+
+    # Check for masterGain usage in startSounds
+    if 'masterGain = new Tone.Gain(userVolume);' not in content:
+        print("Missing masterGain initialization in startSounds")
+        return False
+
+    # Check for routing to masterGain
+    if '.connect(masterGain)' not in content:
+        print("Missing audio routing to masterGain")
+        return False
+
     # Check for new scales
     if "'Mixolydian'" not in content:
         print("Missing Mixolydian scale")

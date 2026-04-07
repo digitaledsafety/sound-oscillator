@@ -2,6 +2,8 @@
       let instrument = null; // Main oscillator for single continuous note (long press)
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
+      let masterGain = null; // Global gain node for master volume control
+      let userVolume = 0.8; // User-controlled master volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
@@ -116,13 +118,17 @@
 
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
+        // Master gain node for overall volume control and dynamic balancing
+        masterGain = new Tone.Gain(userVolume);
+
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
-          "threshold": 0,
-          "ratio": 1,
-          "attack": 0.5,
-          "release": 0.1
+          "threshold": -12,
+          "ratio": 4,
+          "attack": 0.01,
+          "release": 0.25
         });
+
         // Low-shelf filter to give a slight boost to low frequencies
         const lowBump = new Tone.Filter(200, "lowshelf");
 
@@ -133,8 +139,9 @@
         });
         await reverb.ready;
 
-        // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor, reverb);
+        // Chain the effects: masterGain -> lowBump -> masterCompressor -> reverb -> Tone.Destination
+        // This ensures all audio passes through the master gain and the effects chain.
+        masterGain.chain(lowBump, masterCompressor, reverb, Tone.Destination);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -197,7 +204,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterGain).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -235,7 +242,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterGain);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -268,7 +275,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterGain);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -291,28 +298,22 @@
 
       /**
        * Adjusts the master volume based on the number of active sound sources to prevent peaking.
-       * Uses a logarithmic reduction (inverse of linear gain) for each additional track.
+       * Uses a linear gain reduction formula: userVolume / max(1, activeSoundCount).
        */
       function updateMasterVolume() {
+          if (!masterGain) return;
+
           let activeSoundCount = 0;
           if (instrument) activeSoundCount++;
           if (previewLoop) activeSoundCount++;
           activeSoundCount += savedLoops.length;
 
-          let targetVolumeDb = 0; // Default to 0dB (unity gain)
+          // Calculate linear gain as userVolume divided by the number of active sources
+          const targetGain = userVolume / Math.max(1, activeSoundCount);
 
-          if (activeSoundCount > 1) {
-              // Calculate linear gain as 1 divided by the number of active sources
-              targetVolumeDb = -20 * Math.log10(activeSoundCount);
-          }
-
-          // Ensure volume doesn't go too low or produce errors with log of 0
-          if (activeSoundCount === 0) targetVolumeDb = -Infinity; // Mute if no sounds
-          else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
-
-          // Apply a smooth ramp to the volume change to avoid clicks/pops
-          Tone.Destination.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
-          //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
+          // Apply a smooth ramp to the gain change to avoid clicks/pops
+          masterGain.gain.rampTo(targetGain, 0.1); // 0.1 seconds ramp
+          //console.log(`Active sounds: ${activeSoundCount}. Master gain set to: ${targetGain.toFixed(2)}`);
       }
 
 
@@ -425,6 +426,8 @@
       document.addEventListener('DOMContentLoaded', () => {
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
+        const volumeSlider = document.getElementById('volumeSlider');
+        const clearAllButton = document.getElementById('clearAllButton');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -470,6 +473,15 @@
 
         scaleSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+
+        volumeSlider.addEventListener('input', (e) => {
+          userVolume = parseFloat(e.target.value);
+          updateMasterVolume();
+        });
+
+        clearAllButton.addEventListener('click', () => {
+          clearSounds();
+        });
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
@@ -543,7 +555,7 @@
         // Register the service worker
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js')
+            navigator.serviceWorker.register('service-worker.js')
               .then(registration => {
                 //console.log('ServiceWorker registered');
               })
