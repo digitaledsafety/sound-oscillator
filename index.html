@@ -59,6 +59,41 @@
         padding: 0.75rem; /* Reduced padding for a more compact look */
       }
 
+      /* Start Overlay Styles */
+      #startOverlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-color: rgba(44, 62, 80, 0.95);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+        color: white;
+        text-align: center;
+        padding: 2rem;
+      }
+
+      #startButton {
+        background-color: #3498db;
+        color: white;
+        padding: 1rem 2rem;
+        border-radius: 0.5rem;
+        font-size: 1.25rem;
+        font-weight: bold;
+        cursor: pointer;
+        border: none;
+        transition: background-color 0.2s;
+        margin-top: 2rem;
+      }
+
+      #startButton:hover {
+        background-color: #2980b9;
+      }
+
       #top-left-controls select {
         padding: 0.3rem 0.6rem; /* Smaller padding for select */
         border-radius: 0.25rem;
@@ -78,6 +113,12 @@
     </style>
   </head>
   <body>
+    <div id="startOverlay">
+        <h1 class="text-3xl font-bold mb-4">Sound Oscillator</h1>
+        <p class="max-w-md">Experience interactive soundscapes controlled by your device's orientation. Click the button below to start.</p>
+        <button id="startButton">Start Experience</button>
+    </div>
+
     <div id="top-left-controls">
         <select id="scaleSelect" title="Select Musical Scale" aria-label="Select Musical Scale"></select>
         <select id="waveformSelect" class="mt-2" title="Select Waveform" aria-label="Select Waveform">
@@ -87,10 +128,17 @@
           <option value="sawtooth">Sawtooth</option>
         </select>
         <div id="frequencyDisplay" class="mt-2 text-xs text-gray-600 font-mono">0.00 Hz</div>
+        <div class="mt-4 w-full">
+          <label for="masterVolume" class="block text-xs font-semibold text-gray-500 uppercase mb-1">Master Volume</label>
+          <input type="range" id="masterVolume" min="-60" max="0" value="-6" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
     </div>
 
     <div id="top-right-controls">
-        <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
+        <div class="flex flex-col items-end gap-2">
+            <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta (Pitch)</span>
+            <span class="bg-blue-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Gamma (Pan)</span>
+        </div>
     </div>
 
     <svg id="waveformSvg"></svg>

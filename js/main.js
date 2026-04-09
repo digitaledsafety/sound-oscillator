@@ -4,7 +4,12 @@
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
+      let gamma = 0; // Device orientation values (panning)
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
+
+      // Audio Nodes
+      let masterBus = null;
+      let panner = null;
 
       // --- Scale-related Global Variables and Definitions ---
       let currentScaleConfig = null; // Holds the { rootNote, intervals } for the selected scale
@@ -116,6 +121,11 @@
 
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
+        if (masterBus) return; // Already initialized
+
+        masterBus = new Tone.Gain(1);
+        panner = new Tone.StereoPanner(0);
+
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
           "threshold": 0,
@@ -133,8 +143,8 @@
         });
         await reverb.ready;
 
-        // Chain the effects to the destination output
-        Tone.Destination.chain(lowBump, masterCompressor, reverb);
+        // Chain the effects: masterBus -> lowBump -> masterCompressor -> reverb -> panner -> Tone.Destination
+        masterBus.chain(lowBump, masterCompressor, reverb, panner, Tone.Destination);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -197,7 +207,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).toDestination().start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterBus).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -235,7 +245,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterBus);
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -268,7 +278,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         const synth = new Tone.FMSynth({
             oscillator: { type: selectedWaveform }
-        }).toDestination();
+        }).connect(masterBus);
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -294,6 +304,8 @@
        * Uses a logarithmic reduction (inverse of linear gain) for each additional track.
        */
       function updateMasterVolume() {
+          if (!masterBus) return;
+
           let activeSoundCount = 0;
           if (instrument) activeSoundCount++;
           if (previewLoop) activeSoundCount++;
@@ -311,7 +323,7 @@
           else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
 
           // Apply a smooth ramp to the volume change to avoid clicks/pops
-          Tone.Destination.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
+          masterBus.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
           //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
       }
 
@@ -474,30 +486,11 @@
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
 
-        // Centralized device orientation listener
-        window.addEventListener("deviceorientation", (event) => {
-          beta = event.beta !== null ? event.beta.valueOf() : beta;
-
-          const freq = getNormalizedValue();
-          // If the continuous instrument is active, update its frequency in real-time
-          if (instrument) {
-            instrument.frequency.value = freq; // This will be snapped if a scale is active
-          }
-        }, true);
-
-        // Event listeners for tap (click) and long press on the SVG visualizer
-        waveformSvg.on("mousedown touchstart", async function() {
-          // Request permission for device orientation (required on iOS)
-          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            try {
-              const permission = await DeviceOrientationEvent.requestPermission();
-              //console.log('DeviceOrientation permission status:', permission);
-            } catch (err) {
-              console.error('Error requesting DeviceOrientation permission:', err);
-            }
-          }
-
-          // Ensure Tone.js context is started on first interaction
+        // Handle Start Button click
+        const startButton = document.getElementById('startButton');
+        const startOverlay = document.getElementById('startOverlay');
+        startButton.addEventListener('click', async () => {
+          // Ensure Tone.js context is started
           if (Tone.context.state !== 'running') {
             try {
               await Tone.start();
@@ -509,6 +502,46 @@
             }
           }
 
+          // Request permission for device orientation (required on iOS)
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+              const permission = await DeviceOrientationEvent.requestPermission();
+              //console.log('DeviceOrientation permission status:', permission);
+            } catch (err) {
+              console.error('Error requesting DeviceOrientation permission:', err);
+            }
+          }
+
+          // Request wake lock
+          requestWakeLock();
+
+          // Hide overlay
+          startOverlay.style.display = 'none';
+        });
+
+        // Centralized device orientation listener
+        window.addEventListener("deviceorientation", (event) => {
+          beta = event.beta !== null ? event.beta.valueOf() : beta;
+          gamma = event.gamma !== null ? event.gamma.valueOf() : gamma;
+
+          const freq = getNormalizedValue();
+          // If the continuous instrument is active, update its frequency in real-time
+          if (instrument) {
+            instrument.frequency.value = freq; // This will be snapped if a scale is active
+          }
+
+          // Update panning based on gamma (-90 to 90)
+          if (panner) {
+            // Map gamma (-90 to 90) to panning (-1 to 1)
+            let panValue = gamma / 90;
+            // Clamp value
+            panValue = Math.max(-1, Math.min(1, panValue));
+            panner.pan.value = panValue;
+          }
+        }, true);
+
+        // Event listeners for tap (click) and long press on the SVG visualizer using pointer events
+        waveformSvg.on("pointerdown", async function(event) {
           isLongPress = false;
           pressTimer = setTimeout(() => {
             isLongPress = true;
@@ -516,7 +549,7 @@
           }, longPressDuration);
         });
 
-        waveformSvg.on("mouseup touchend", function(event) {
+        waveformSvg.on("pointerup", function(event) {
           clearTimeout(pressTimer); // Clear long press timer
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
@@ -540,6 +573,15 @@
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
         });
 
+        // Master Volume slider listener
+        const volumeSlider = document.getElementById('masterVolume');
+        // Initial volume setting
+        Tone.Destination.volume.value = parseFloat(volumeSlider.value);
+        volumeSlider.addEventListener('input', (event) => {
+          const volume = parseFloat(event.target.value);
+          Tone.Destination.volume.rampTo(volume, 0.1);
+        });
+
         // Register the service worker
         if ('serviceWorker' in navigator) {
           window.addEventListener('load', () => {
@@ -553,8 +595,6 @@
           });
         }
 
-        // Call the function to request the wake lock
-        requestWakeLock();
         startSounds(); // Prepare Tone.js, but don't start audio context yet
         updateWaveformVisualization(); // Start the D3 visualization loop
         updateMasterVolume(); // Initial volume update on load
