@@ -40,6 +40,32 @@ def test_js_logic_integrity():
         print("Missing frequencyDisplay")
         return False
 
+    # Check for effectsBus implementation
+    if 'let effectsBus = null;' not in content:
+        print("Missing effectsBus definition")
+        return False
+    if 'if (effectsBus) return;' not in content:
+        print("Missing idempotency check in startSounds")
+        return False
+    if '.connect(effectsBus)' not in content:
+        print("Missing instrument connection to effectsBus")
+        return False
+
+    # Check for Clear All button in index.html
+    with open('index.html', 'r') as f:
+        html_content = f.read()
+    if 'id="clearAllBtn"' not in html_content:
+        print("Missing clearAllBtn in index.html")
+        return False
+
+    # Check for PWA relative paths
+    if 'href="manifest.json"' not in html_content:
+        print("Missing relative manifest link in index.html")
+        return False
+    if "register('service-worker.js')" not in content:
+        print("Missing relative service worker registration in js/main.js")
+        return False
+
     return True
 
 if __name__ == "__main__":

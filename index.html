@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html>
   <head>
+    <meta charset="UTF-8">
     <base target="_top">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sound Oscillator PWA</title>
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/tone"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -79,6 +80,7 @@
   </head>
   <body>
     <div id="top-left-controls">
+        <button id="clearAllBtn" class="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded mb-2 text-xs w-full uppercase">Clear All</button>
         <select id="scaleSelect" title="Select Musical Scale" aria-label="Select Musical Scale"></select>
         <select id="waveformSelect" class="mt-2" title="Select Waveform" aria-label="Select Waveform">
           <option value="sine">Sine</option>
