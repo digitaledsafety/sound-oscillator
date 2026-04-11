@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <base target="_top">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Sound Oscillator PWA</title>
     <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/tone"></script>
@@ -15,87 +15,115 @@
         height: 100%;
         margin: 0;
         font-family: 'Inter', sans-serif;
-        background-color: #f0f4f8; /* Light background */
-        overflow: hidden; /* Prevent scrolling due to full-screen elements */
+        background-color: #2c3e50;
+        overflow: hidden; /* Prevent scrolling */
+        touch-action: none; /* Disable default touch actions for better multi-touch handling */
       }
 
       /* Full-screen SVG for visualization */
       #waveformSvg {
-        position: fixed; /* Fixed position to cover the entire viewport */
+        position: fixed;
         top: 0;
         left: 0;
-        width: 100vw; /* Full viewport width */
-        height: 100vh; /* Full viewport height */
-        background-color: #2c3e50; /* Dark background for contrast */
-        z-index: 1; /* Ensure it's visible */
+        width: 100vw;
+        height: 100vh;
+        background-color: #2c3e50;
+        z-index: 1;
       }
 
-      /* Container for top-right controls (now empty, but kept for structure) */
-      #top-right-controls {
+      /* Settings Modal */
+      #settingsModal {
         position: fixed;
-        top: 1rem;
-        right: 1rem;
-        z-index: 10; /* Ensure it's above the SVG */
-        display: flex;
-        flex-direction: column; /* Stack items vertically */
-        align-items: flex-end; /* Align items to the right */
-        gap: 0.75rem; /* Space between elements */
-        padding: 0.5rem; /* Small padding around the container */
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        display: none; /* Hidden by default */
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+        backdrop-filter: blur(4px);
       }
 
-      /* Container for top-left scale controls */
-      #top-left-controls {
-        position: fixed;
-        top: 1rem;
-        left: 1rem;
-        z-index: 10; /* Ensure it's above the SVG */
-        display: flex;
-        flex-direction: column; /* Use column for vertical stacking if needed, but flex-start aligns items */
-        align-items: flex-start; /* Align items to the left */
-        gap: 0; /* Remove gap if only one element */
-        padding: 0.5rem; /* Smaller padding */
-        background-color: rgba(255, 255, 255, 0.9); /* Slightly transparent white */
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        padding: 0.75rem; /* Reduced padding for a more compact look */
+      #modalContent {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+        width: 90%;
+        max-width: 400px;
+        position: relative;
       }
 
-      #top-left-controls select {
-        padding: 0.3rem 0.6rem; /* Smaller padding for select */
-        border-radius: 0.25rem;
-        border: 1px solid #ccc;
-        font-size: 0.85rem; /* Slightly smaller font size */
-        background-color: #f9f9f9;
-        color: #333;
-        appearance: none; /* Remove default dropdown arrow */
-        background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23333%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13.6-6.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%204.6%201.8%208.4%205.4%2012L137%20229.4c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2094.2c3.6-3.6%205.4-7.8%205.4-12.8%200-4.6-1.8-8.4-5.4-12z%22%2F%3E%3C%2Fsvg%3E');
-        background-repeat: no-repeat;
-        background-position: right 0.5rem center;
-        background-size: 0.6em auto;
-        padding-right: 2rem; /* Make space for the custom arrow */
+      #closeSettingsBtn {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        font-size: 1.5rem;
+        line-height: 1;
         cursor: pointer;
+        color: #666;
       }
-      /* Removed .bar fill from CSS as it's now handled dynamically by D3 */
+
+      #closeSettingsBtn:hover {
+        color: #000;
+      }
+
+      select {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        border: 1px solid #ccc;
+        margin-bottom: 1rem;
+        background-color: #f9f9f9;
+      }
+
+      .modal-label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #4a5568;
+        margin-bottom: 0.25rem;
+      }
     </style>
   </head>
   <body>
-    <div id="top-left-controls">
-        <button id="clearAllBtn" class="mb-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-1 px-3 rounded uppercase tracking-wider transition-colors">Clear All</button>
-        <select id="scaleSelect" title="Select Musical Scale" aria-label="Select Musical Scale"></select>
-        <select id="waveformSelect" class="mt-2" title="Select Waveform" aria-label="Select Waveform">
-          <option value="sine">Sine</option>
-          <option value="square">Square</option>
-          <option value="triangle">Triangle</option>
-          <option value="sawtooth">Sawtooth</option>
-        </select>
-        <div id="frequencyDisplay" class="mt-2 text-xs text-gray-600 font-mono">0.00 Hz</div>
-    </div>
-
-    <div id="top-right-controls">
-        <span class="bg-yellow-400 text-black text-xs font-bold px-2 py-1 rounded-full uppercase tracking-wider">Beta</span>
-    </div>
-
     <svg id="waveformSvg"></svg>
+
+    <div id="settingsModal">
+      <div id="modalContent">
+        <span id="closeSettingsBtn">&times;</span>
+        <h2 class="text-xl font-bold mb-4 border-b pb-2">Settings</h2>
+
+        <div class="mb-4">
+          <label for="scaleSelect" class="modal-label">Musical Scale</label>
+          <select id="scaleSelect" title="Select Musical Scale" aria-label="Select Musical Scale"></select>
+        </div>
+
+        <div class="mb-4">
+          <label for="waveformSelect" class="modal-label">Waveform</label>
+          <select id="waveformSelect" title="Select Waveform" aria-label="Select Waveform">
+            <option value="sine">Sine</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="sawtooth">Sawtooth</option>
+          </select>
+        </div>
+
+        <div class="mb-6">
+          <button id="clearAllBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition-colors uppercase tracking-wider text-sm">
+            Clear All Sounds
+          </button>
+        </div>
+
+        <div id="frequencyDisplay" class="text-center text-sm text-gray-500 font-mono">0.00 Hz</div>
+
+        <div class="mt-4 text-center">
+            <span class="bg-yellow-400 text-black text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Beta</span>
+        </div>
+      </div>
+    </div>
 
     <script src="js/main.js"></script>
   </body>
