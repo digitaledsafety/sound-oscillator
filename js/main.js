@@ -433,6 +433,8 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const clearAllBtn = document.getElementById('clearAllBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -464,6 +466,14 @@
         scaleSelect.value = 'Off'; // Set default to 'Off'
 
         // --- Event Listener for Scale Controls ---
+        function showSettings() {
+            settingsModal.style.display = "flex";
+        }
+
+        function hideSettings() {
+            settingsModal.style.display = "none";
+        }
+
         function updateScaleSettings() {
             const selectedScaleName = scaleSelect.value;
             currentScaleConfig = availableScales[selectedScaleName];
@@ -479,6 +489,10 @@
         scaleSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
         clearAllBtn.addEventListener('click', () => clearSounds());
+        closeSettingsBtn.addEventListener('click', hideSettings);
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) hideSettings();
+        });
 
         // Initial setup of scale frequencies (for 'Off' default)
         updateScaleSettings();
@@ -495,7 +509,12 @@
         }, true);
 
         // Event listeners for tap (click) and long press on the SVG visualizer
-        waveformSvg.on("mousedown touchstart", async function() {
+        waveformSvg.on("mousedown touchstart", async function(event) {
+          // Check for 3-finger tap
+          if (event.touches && event.touches.length === 3) {
+            showSettings();
+            return;
+          }
           // Request permission for device orientation (required on iOS)
           if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
@@ -564,7 +583,23 @@
 
         // Call the function to request the wake lock
         requestWakeLock();
+        // Re-acquire wake lock when the page becomes visible again
+        document.addEventListener('visibilitychange', async () => {
+          if (wakeLock !== null && document.visibilityState === 'visible') {
+            await requestWakeLock();
+          }
+        });
+
         startSounds(); // Prepare Tone.js, but don't start audio context yet
         updateWaveformVisualization(); // Start the D3 visualization loop
         updateMasterVolume(); // Initial volume update on load
+
+        // Keyboard shortcuts
+        window.addEventListener("keydown", (e) => {
+            if (e.key.toLowerCase() === "m") {
+                showSettings();
+            } else if (e.key === "Escape") {
+                hideSettings();
+            }
+        });
       });
