@@ -510,11 +510,6 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("mousedown touchstart", async function(event) {
-          // Check for 3-finger tap
-          if (event.touches && event.touches.length === 3) {
-            showSettings();
-            return;
-          }
           // Request permission for device orientation (required on iOS)
           if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
@@ -538,9 +533,14 @@
           }
 
           isLongPress = false;
+          const touchCount = event.touches ? event.touches.length : 1;
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            toggleContinuousNote(); // Long press toggles continuous note
+            if (touchCount === 2) {
+                showSettings();
+            } else {
+                toggleContinuousNote(); // 1-finger long press toggles continuous note
+            }
           }, longPressDuration);
         });
 
