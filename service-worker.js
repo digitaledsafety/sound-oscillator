@@ -5,6 +5,8 @@ const urlsToCache = [
   'https://unpkg.com/tone',
   'https://cdn.tailwindcss.com',
   'https://d3js.org/d3.v7.min.js',
+  'manifest.json',
+  'favicon.ico',
   'icons/icon-96x96.png',
   'icons/icon-128x128.png',
   'icons/icon-144x144.png',
