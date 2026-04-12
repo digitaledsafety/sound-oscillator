@@ -435,7 +435,6 @@
         const volumeSlider = document.getElementById('volumeSlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
-        const openSettingsBtn = document.getElementById('openSettingsBtn');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
         // Select the SVG element using D3
@@ -495,7 +494,6 @@
             updateMasterVolume();
         });
         clearAllBtn.addEventListener('click', () => clearSounds());
-        openSettingsBtn.addEventListener('click', showSettings);
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
             if (e.target === settingsModal) hideSettings();

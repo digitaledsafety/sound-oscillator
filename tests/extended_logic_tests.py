@@ -59,6 +59,11 @@ def test_extended_js_logic():
         print("Missing pointerup event listener")
         return False
 
+    # Verify removal of openSettingsBtn
+    if 'openSettingsBtn' in content:
+        print("openSettingsBtn still present in JS")
+        return False
+
     return True
 
 if __name__ == "__main__":
