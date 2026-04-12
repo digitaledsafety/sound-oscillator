@@ -2,7 +2,8 @@
       let instrument = null; // Main oscillator for single continuous note (long press)
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
-      let effectsBus = null; // Central gain node for effects routing
+      let masterGain = null; // Central gain node for effects routing
+      let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
@@ -79,6 +80,17 @@
       }
 
       /**
+       * Creates a new FMSynth with the current selected waveform and connects it to the master gain.
+       * @returns {Tone.FMSynth} The newly created synth.
+       */
+      function createSynth() {
+        const selectedWaveform = document.getElementById('waveformSelect').value;
+        return new Tone.FMSynth({
+          oscillator: { type: selectedWaveform }
+        }).connect(masterGain);
+      }
+
+      /**
        * Finds the closest frequency in a sorted array of scale frequencies to a given raw frequency.
        * @param {number} rawFreq - The frequency from device orientation.
        * @returns {number} The snapped frequency.
@@ -118,17 +130,17 @@
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
         // Idempotency check to prevent redundant audio graph initialization
-        if (effectsBus) return;
+        if (masterGain) return;
 
         // Initialize effects bus
-        effectsBus = new Tone.Gain();
+        masterGain = new Tone.Gain();
 
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
-          "threshold": 0,
-          "ratio": 1,
-          "attack": 0.5,
-          "release": 0.1
+          threshold: -12,
+          ratio: 4,
+          attack: 0.01,
+          release: 0.25
         });
         // Low-shelf filter to give a slight boost to low frequencies
         const lowBump = new Tone.Filter(200, "lowshelf");
@@ -141,7 +153,7 @@
         await reverb.ready;
 
         // Chain the effects to the destination output
-        effectsBus.chain(lowBump, masterCompressor, reverb, Tone.Destination);
+        masterGain.chain(lowBump, masterCompressor, reverb, Tone.Destination);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -204,7 +216,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(effectsBus).start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterGain).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -239,10 +251,7 @@
         }
 
         // Create the synth for the preview loop locally
-        const selectedWaveform = document.getElementById('waveformSelect').value;
-        const synth = new Tone.FMSynth({
-            oscillator: { type: selectedWaveform }
-        }).connect(effectsBus);
+        const synth = createSynth();
         previewLoop = new Tone.Loop((time) => {
           // Call getNormalizedValue() directly for each pulse to ensure dynamic update (and snapping if enabled)
           const currentFreq = getNormalizedValue();
@@ -272,10 +281,7 @@
         const fixedFrequency = getNormalizedValue(); // Capture the value ONCE here
 
         // Create a new FM synth for the loop
-        const selectedWaveform = document.getElementById('waveformSelect').value;
-        const synth = new Tone.FMSynth({
-            oscillator: { type: selectedWaveform }
-        }).connect(effectsBus);
+        const synth = createSynth();
 
         // Create a new Tone.Loop. The fixedFrequency is now used directly.
         const newLoop = new Tone.Loop((time) => {
@@ -298,28 +304,22 @@
 
       /**
        * Adjusts the master volume based on the number of active sound sources to prevent peaking.
-       * Uses a logarithmic reduction (inverse of linear gain) for each additional track.
+       * Uses the user-defined volume and balances it based on the number of active tracks.
        */
       function updateMasterVolume() {
-          let activeSoundCount = 0;
-          if (instrument) activeSoundCount++;
-          if (previewLoop) activeSoundCount++;
-          activeSoundCount += savedLoops.length;
+        let activeSoundCount = 0;
+        if (instrument) activeSoundCount++;
+        if (previewLoop) activeSoundCount++;
+        activeSoundCount += savedLoops.length;
 
-          let targetVolumeDb = 0; // Default to 0dB (unity gain)
+        // Calculate gain: userVolume divided by the number of active tracks (minimum of 1)
+        const calculatedGain = userVolume / Math.max(1, activeSoundCount);
 
-          if (activeSoundCount > 1) {
-              // Calculate linear gain as 1 divided by the number of active sources
-              targetVolumeDb = -20 * Math.log10(activeSoundCount);
-          }
-
-          // Ensure volume doesn't go too low or produce errors with log of 0
-          if (activeSoundCount === 0) targetVolumeDb = -Infinity; // Mute if no sounds
-          else if (targetVolumeDb < -40) targetVolumeDb = -40; // Cap lowest volume to avoid silent tracks
-
-          // Apply a smooth ramp to the volume change to avoid clicks/pops
-          Tone.Destination.volume.rampTo(targetVolumeDb, 0.1); // 0.1 seconds ramp
-          //console.log(`Active sounds: ${activeSoundCount}. Master volume set to: ${targetVolumeDb.toFixed(2)} dB`);
+        // Apply a smooth ramp to the gain change on the masterGain node to avoid clicks/pops
+        if (masterGain) {
+          masterGain.gain.rampTo(calculatedGain, 0.1); // 0.1 seconds ramp
+        }
+        //console.log(`Active sounds: ${activeSoundCount}. User volume: ${userVolume}. Master gain set to: ${calculatedGain.toFixed(2)}`);
       }
 
 
@@ -432,8 +432,10 @@
       document.addEventListener('DOMContentLoaded', () => {
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
+        const volumeSlider = document.getElementById('volumeSlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
+        const openSettingsBtn = document.getElementById('openSettingsBtn');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
         // Select the SVG element using D3
@@ -488,7 +490,12 @@
 
         scaleSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+        volumeSlider.addEventListener('input', (e) => {
+            userVolume = parseFloat(e.target.value);
+            updateMasterVolume();
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
+        openSettingsBtn.addEventListener('click', showSettings);
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
             if (e.target === settingsModal) hideSettings();
@@ -501,6 +508,12 @@
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
 
+          // Update Beta display
+          const betaDisplay = document.getElementById('betaDisplay');
+          if (betaDisplay) {
+              betaDisplay.textContent = `Beta: ${beta.toFixed(1)}°`;
+          }
+
           const freq = getNormalizedValue();
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
@@ -509,7 +522,7 @@
         }, true);
 
         // Event listeners for tap (click) and long press on the SVG visualizer
-        waveformSvg.on("mousedown touchstart", async function(event) {
+        waveformSvg.on("pointerdown", async function(event) {
           // Request permission for device orientation (required on iOS)
           if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
@@ -544,7 +557,7 @@
           }, longPressDuration);
         });
 
-        waveformSvg.on("mouseup touchend", function(event) {
+        waveformSvg.on("pointerup", function(event) {
           clearTimeout(pressTimer); // Clear long press timer
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
