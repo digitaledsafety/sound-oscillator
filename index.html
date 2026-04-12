@@ -91,6 +91,7 @@
   <body>
     <svg id="waveformSvg"></svg>
 
+
     <div id="settingsModal">
       <div id="modalContent">
         <span id="closeSettingsBtn">&times;</span>
@@ -111,6 +112,11 @@
           </select>
         </div>
 
+        <div class="mb-4">
+          <label for="volumeSlider" class="modal-label">Master Volume</label>
+          <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
+
         <div class="mb-6">
           <button id="clearAllBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition-colors uppercase tracking-wider text-sm">
             Clear All Sounds
@@ -120,7 +126,7 @@
         <div id="frequencyDisplay" class="text-center text-sm text-gray-500 font-mono">0.00 Hz</div>
 
         <div class="mt-4 text-center">
-            <span class="bg-yellow-400 text-black text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Beta</span>
+            <span id="betaDisplay" class="bg-yellow-400 text-black text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Beta: 0.0°</span>
         </div>
       </div>
     </div>
