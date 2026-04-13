@@ -59,9 +59,27 @@ def test_extended_js_logic():
         print("Missing pointerup event listener")
         return False
 
-    # Verify removal of openSettingsBtn
-    if 'openSettingsBtn' in content:
-        print("openSettingsBtn still present in JS")
+    # Check for robust multi-touch (activePointers)
+    if 'const activePointers = new Map();' not in content:
+        print("Missing activePointers Map")
+        return False
+
+    # Check for Delay effect
+    if 'delayEffect = new Tone.FeedbackDelay' not in content:
+        print("Missing delayEffect initialization")
+        return False
+    if 'delaySlider' not in content:
+        print("Missing delaySlider reference")
+        return False
+
+    # Check for openSettingsBtn presence (Discovery enhancement)
+    if 'openSettingsBtn' not in content:
+        print("Missing openSettingsBtn in JS")
+        return False
+
+    # Check for Audio Context initialization guard
+    if content.count('await startSounds()') < 2:
+        print(f"Insufficient startSounds() awaits: found {content.count('await startSounds()')}")
         return False
 
     return True

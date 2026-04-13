@@ -3,6 +3,7 @@
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterGain = null; // Central gain node for effects routing
+      let delayEffect = null; // Delay effect node
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
@@ -48,6 +49,9 @@
       let isLongPress = false;
       let lastTapTime = 0;
       const doubleTapThreshold = 300; // milliseconds
+
+      // Active pointers map for robust multi-touch detection
+      const activePointers = new Map();
 
       // --- Scale-related Functions ---
 
@@ -145,6 +149,11 @@
         // Low-shelf filter to give a slight boost to low frequencies
         const lowBump = new Tone.Filter(200, "lowshelf");
 
+        // Delay effect
+        const initialDelayWet = document.getElementById('delaySlider') ? parseFloat(document.getElementById('delaySlider').value) : 0.3;
+        delayEffect = new Tone.FeedbackDelay("8n", 0.5);
+        delayEffect.wet.value = initialDelayWet;
+
         // Reverb for spatial depth
         const reverb = new Tone.Reverb({
           decay: 2,
@@ -153,7 +162,7 @@
         await reverb.ready;
 
         // Chain the effects to the destination output
-        masterGain.chain(lowBump, masterCompressor, reverb, Tone.Destination);
+        masterGain.chain(lowBump, delayEffect, masterCompressor, reverb, Tone.Destination);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -433,7 +442,9 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delaySlider = document.getElementById('delaySlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
+        const openSettingsBtn = document.getElementById('openSettingsBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
@@ -493,7 +504,13 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delaySlider.addEventListener('input', (e) => {
+            if (delayEffect) {
+                delayEffect.wet.value = parseFloat(e.target.value);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
+        openSettingsBtn.addEventListener('click', showSettings);
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
             if (e.target === settingsModal) hideSettings();
@@ -521,6 +538,12 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
+          // Ensure audio graph is initialized
+          await startSounds();
+
+          // Track the active pointer
+          activePointers.set(event.pointerId, event);
+
           // Request permission for device orientation (required on iOS)
           if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             try {
@@ -544,39 +567,62 @@
           }
 
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+          const touchCount = activePointers.size;
+
+          // Clear any existing timer to avoid overlaps
+          if (pressTimer) clearTimeout(pressTimer);
+
           pressTimer = setTimeout(() => {
             isLongPress = true;
             if (touchCount === 2) {
                 showSettings();
-            } else {
+            } else if (touchCount === 1) {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
             }
           }, longPressDuration);
         });
 
-        waveformSvg.on("pointerup", function(event) {
+        waveformSvg.on("pointerup", async function(event) {
+          // Ensure audio graph is initialized
+          await startSounds();
+
+          // Remove the pointer
+          activePointers.delete(event.pointerId);
+
           clearTimeout(pressTimer); // Clear long press timer
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
               return; // Long press already handled
           }
 
-          const currentTime = performance.now(); // Use performance.now() for UI event timing
-          if (currentTime - lastTapTime < doubleTapThreshold) {
-              // This is a double tap
-              clearSounds();
-              lastTapTime = 0; // Reset to prevent triple taps from being double taps
-          } else {
-              // This is a single tap (or the first tap of a potential double tap)
-              if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
-                  addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
+          // Only handle single-tap / double-tap on the last finger lift
+          if (activePointers.size === 0) {
+              const currentTime = performance.now(); // Use performance.now() for UI event timing
+              if (currentTime - lastTapTime < doubleTapThreshold) {
+                  // This is a double tap
+                  clearSounds();
+                  lastTapTime = 0; // Reset to prevent triple taps from being double taps
               } else {
-                  startPreviewLoop(); // Otherwise, start the dynamic preview loop
+                  // This is a single tap (or the first tap of a potential double tap)
+                  if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
+                      addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
+                  } else {
+                      startPreviewLoop(); // Otherwise, start the dynamic preview loop
+                  }
+                  lastTapTime = currentTime;
               }
-              lastTapTime = currentTime;
           }
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
+        });
+
+        waveformSvg.on("pointercancel", function(event) {
+          activePointers.delete(event.pointerId);
+          clearTimeout(pressTimer);
+        });
+
+        waveformSvg.on("pointerleave", function(event) {
+            activePointers.delete(event.pointerId);
+            clearTimeout(pressTimer);
         });
 
         // Register the service worker
