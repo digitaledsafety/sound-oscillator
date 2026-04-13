@@ -91,6 +91,21 @@
   <body>
     <svg id="waveformSvg"></svg>
 
+    <!-- UI Overlay for persistent info and settings -->
+    <div id="uiOverlay" class="fixed top-0 left-0 w-full p-4 pointer-events-none z-10 flex justify-between items-start">
+      <div id="infoOverlay" class="bg-black/30 backdrop-blur-md rounded-lg px-4 py-2 text-white font-mono text-sm shadow-lg">
+        <div id="frequencyDisplay">0.00 Hz (C0)</div>
+        <div id="betaDisplay" class="text-xs text-yellow-400">Beta: 0.0°</div>
+      </div>
+
+      <button id="openSettingsBtn" class="pointer-events-auto bg-white/10 hover:bg-white/20 backdrop-blur-md p-2 rounded-full transition-colors shadow-lg" title="Settings" aria-label="Open Settings">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+    </div>
+
 
     <div id="settingsModal">
       <div id="modalContent">
@@ -117,17 +132,17 @@
           <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
         </div>
 
+        <div class="mb-4">
+          <label for="delaySlider" class="modal-label">Delay (Echo)</label>
+          <input type="range" id="delaySlider" min="0" max="1" step="0.01" value="0.3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
+
         <div class="mb-6">
           <button id="clearAllBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded transition-colors uppercase tracking-wider text-sm">
             Clear All Sounds
           </button>
         </div>
 
-        <div id="frequencyDisplay" class="text-center text-sm text-gray-500 font-mono">0.00 Hz</div>
-
-        <div class="mt-4 text-center">
-            <span id="betaDisplay" class="bg-yellow-400 text-black text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">Beta: 0.0°</span>
-        </div>
       </div>
     </div>
 
