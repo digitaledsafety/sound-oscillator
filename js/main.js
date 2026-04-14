@@ -2,33 +2,32 @@
       let instrument = null; // Main oscillator for single continuous note (long press)
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
-      let masterGain = null; // Central gain node for effects routing
+      let masterBus = null; // Central gain node for effects routing
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
+      let gamma = 0; // Device orientation values (panning)
+      let panner = null; // Stereo panner for spatial audio
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
       // --- Scale-related Global Variables and Definitions ---
       let currentScaleConfig = null; // Holds the { rootNote, intervals } for the selected scale
 
       const availableScales = {
-        'Off': { rootNote: null, intervals: null }, // No snapping
-        'C Major': { rootNote: 'C', intervals: [0, 2, 4, 5, 7, 9, 11] },
-        'A Minor': { rootNote: 'A', intervals: [0, 2, 3, 5, 7, 8, 10] },
-        'C Pentatonic Major': { rootNote: 'C', intervals: [0, 2, 4, 7, 9] },
-        'A Blues': { rootNote: 'A', intervals: [0, 3, 5, 6, 7, 10] },
-        'Chromatic': { rootNote: 'C', intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
-        'C Dorian': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 9, 10] },
-        'C Lydian': { rootNote: 'C', intervals: [0, 2, 4, 6, 7, 9, 11] },
-        'C Harmonic Minor': { rootNote: 'C', intervals: [0, 2, 3, 5, 7, 8, 11] },
-        'F Minor': { rootNote: 'F', intervals: [0, 2, 3, 5, 7, 8, 10] },
-        'C Minor Pentatonic': { rootNote: 'C', intervals: [0, 3, 5, 7, 10] }, // Added C Minor Pentatonic
-        'G Minor Pentatonic': { rootNote: 'G', intervals: [0, 3, 5, 7, 10] }, // Added G Minor Pentatonic
-        'Dorian Minor': { rootNote: 'D', intervals: [0, 2, 3, 5, 7, 9, 10] }, // Added Dorian Minor (same as Dorian, but explicit name)
-        'Phrygian Minor': { rootNote: 'E', intervals: [0, 1, 3, 5, 7, 8, 10] }, // Added Phrygian Minor
-        'Mixolydian': { rootNote: 'G', intervals: [0, 2, 4, 5, 7, 9, 10] },
-        'Aeolian': { rootNote: 'A', intervals: [0, 2, 3, 5, 7, 8, 10] },
-        'Locrian': { rootNote: 'B', intervals: [0, 1, 3, 5, 6, 8, 10] }
+        'Off': { intervals: null }, // No snapping
+        'Major': { intervals: [0, 2, 4, 5, 7, 9, 11] },
+        'Minor': { intervals: [0, 2, 3, 5, 7, 8, 10] },
+        'Pentatonic Major': { intervals: [0, 2, 4, 7, 9] },
+        'Blues': { intervals: [0, 3, 5, 6, 7, 10] },
+        'Chromatic': { intervals: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+        'Dorian': { intervals: [0, 2, 3, 5, 7, 9, 10] },
+        'Lydian': { intervals: [0, 2, 4, 6, 7, 9, 11] },
+        'Harmonic Minor': { intervals: [0, 2, 3, 5, 7, 8, 11] },
+        'Minor Pentatonic': { intervals: [0, 3, 5, 7, 10] },
+        'Phrygian Minor': { intervals: [0, 1, 3, 5, 7, 8, 10] },
+        'Mixolydian': { intervals: [0, 2, 4, 5, 7, 9, 10] },
+        'Aeolian': { intervals: [0, 2, 3, 5, 7, 8, 10] },
+        'Locrian': { intervals: [0, 1, 3, 5, 6, 8, 10] }
       };
 
       let generatedScaleFrequencies = []; // Cache for frequencies of the current scale
@@ -87,7 +86,7 @@
         const selectedWaveform = document.getElementById('waveformSelect').value;
         return new Tone.FMSynth({
           oscillator: { type: selectedWaveform }
-        }).connect(masterGain);
+        }).connect(masterBus);
       }
 
       /**
@@ -130,10 +129,10 @@
       // Function to initialize Tone.js audio context and effects
       async function startSounds() {
         // Idempotency check to prevent redundant audio graph initialization
-        if (masterGain) return;
+        if (masterBus) return;
 
         // Initialize effects bus
-        masterGain = new Tone.Gain();
+        masterBus = new Tone.Gain();
 
         // Master compressor to prevent audio clipping and normalize volume
         const masterCompressor = new Tone.Compressor({
@@ -152,8 +151,11 @@
         });
         await reverb.ready;
 
-        // Chain the effects to the destination output
-        masterGain.chain(lowBump, masterCompressor, reverb, Tone.Destination);
+        // Stereo Panner for orientation-based spatial audio
+        panner = new Tone.Panner(0).toDestination();
+
+        // Chain the effects to the panner
+        masterBus.chain(lowBump, masterCompressor, reverb, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -216,7 +218,7 @@
         } else {
           // If instrument is not active, start it
           const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterGain).start();
+          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterBus).start();
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -312,14 +314,19 @@
         if (previewLoop) activeSoundCount++;
         activeSoundCount += savedLoops.length;
 
-        // Calculate gain: userVolume divided by the number of active tracks (minimum of 1)
-        const calculatedGain = userVolume / Math.max(1, activeSoundCount);
+        // Calculate gain: divide by the number of active tracks (minimum of 1)
+        const busGain = 1.0 / Math.max(1, activeSoundCount);
 
-        // Apply a smooth ramp to the gain change on the masterGain node to avoid clicks/pops
-        if (masterGain) {
-          masterGain.gain.rampTo(calculatedGain, 0.1); // 0.1 seconds ramp
+        // Apply a smooth ramp to the gain change on the masterBus node to avoid clicks/pops
+        if (masterBus) {
+          masterBus.gain.rampTo(busGain, 0.1); // 0.1 seconds ramp
         }
-        //console.log(`Active sounds: ${activeSoundCount}. User volume: ${userVolume}. Master gain set to: ${calculatedGain.toFixed(2)}`);
+
+        // Map the userVolume to the destination volume (0 to 1 -> -Infinity to 0 dB)
+        const volumeDb = Tone.gainToDb(userVolume);
+        Tone.Destination.volume.rampTo(volumeDb, 0.1);
+
+        //console.log(`Active sounds: ${activeSoundCount}. User volume: ${userVolume} (${volumeDb.toFixed(2)} dB). Master bus gain set to: ${busGain.toFixed(2)}`);
       }
 
 
@@ -430,6 +437,7 @@
 
       // Main script execution when the DOM is fully loaded
       document.addEventListener('DOMContentLoaded', () => {
+        const rootNoteSelect = document.getElementById('rootNoteSelect');
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
@@ -477,17 +485,21 @@
 
         function updateScaleSettings() {
             const selectedScaleName = scaleSelect.value;
+            const selectedRootNote = rootNoteSelect.value;
             currentScaleConfig = availableScales[selectedScaleName];
 
-            if (currentScaleConfig && currentScaleConfig.rootNote && currentScaleConfig.intervals) {
-                generatedScaleFrequencies = generateScaleFrequencies(currentScaleConfig.rootNote, currentScaleConfig.intervals);
+            if (currentScaleConfig && currentScaleConfig.intervals) {
+                generatedScaleFrequencies = generateScaleFrequencies(selectedRootNote, currentScaleConfig.intervals);
+                rootNoteSelect.disabled = false;
             } else {
                 generatedScaleFrequencies = []; // No snapping
+                rootNoteSelect.disabled = true;
             }
             clearSounds(); // Reset all sounds when scale changes
         }
 
         scaleSelect.addEventListener('change', updateScaleSettings);
+        rootNoteSelect.addEventListener('change', updateScaleSettings);
         waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
         volumeSlider.addEventListener('input', (e) => {
             userVolume = parseFloat(e.target.value);
@@ -505,11 +517,16 @@
         // Centralized device orientation listener
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
+          gamma = event.gamma !== null ? event.gamma.valueOf() : gamma;
 
-          // Update Beta display
+          // Update Beta/Gamma display
           const betaDisplay = document.getElementById('betaDisplay');
           if (betaDisplay) {
               betaDisplay.textContent = `Beta: ${beta.toFixed(1)}°`;
+          }
+          const gammaDisplay = document.getElementById('gammaDisplay');
+          if (gammaDisplay) {
+              gammaDisplay.textContent = `Gamma: ${gamma.toFixed(1)}°`;
           }
 
           const freq = getNormalizedValue();
@@ -517,32 +534,40 @@
           if (instrument) {
             instrument.frequency.rampTo(freq, 0.05); // Smooth frequency transition
           }
+
+          // Update panner based on gamma (left/right tilt)
+          if (panner) {
+            // Map gamma (-90 to 90) to panner pan (-1 to 1)
+            const panValue = Math.max(-1, Math.min(1, gamma / 90));
+            panner.pan.rampTo(panValue, 0.1);
+          }
         }, true);
+
+        // Handle start button click for initial interaction requirements
+        const startButton = document.getElementById('startButton');
+        const startOverlay = document.getElementById('startOverlay');
+
+        startButton.addEventListener('click', async () => {
+          // Start Tone.js AudioContext
+          await Tone.start();
+
+          // Request DeviceOrientation permissions for iOS
+          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            try {
+              await DeviceOrientationEvent.requestPermission();
+            } catch (err) {
+              console.error('Error requesting orientation permission:', err);
+            }
+          }
+
+          // Hide overlay and re-acquire wake lock
+          startOverlay.style.display = 'none';
+          requestWakeLock();
+          //console.log("Audio context started and orientation permission requested.");
+        });
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
-          // Request permission for device orientation (required on iOS)
-          if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            try {
-              const permission = await DeviceOrientationEvent.requestPermission();
-              //console.log('DeviceOrientation permission status:', permission);
-            } catch (err) {
-              console.error('Error requesting DeviceOrientation permission:', err);
-            }
-          }
-
-          // Ensure Tone.js context is started on first interaction
-          if (Tone.context.state !== 'running') {
-            try {
-              await Tone.start();
-              if (Tone.context.state !== 'running') {
-                await Tone.context.resume();
-              }
-            } catch (e) {
-              console.error("Error starting/resuming Tone.js context:", e);
-            }
-          }
-
           isLongPress = false;
           const touchCount = event.touches ? event.touches.length : 1;
           pressTimer = setTimeout(() => {
