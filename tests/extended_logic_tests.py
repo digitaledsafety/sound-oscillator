@@ -4,13 +4,15 @@ def test_extended_js_logic():
     with open('js/main.js', 'r') as f:
         content = f.read()
 
-    # Check for masterGain renaming
-    if 'let masterGain = null;' not in content:
-        print("Missing masterGain initialization")
+    # Check for masterBus renaming
+    if 'let masterBus = null;' not in content:
+        print("Missing masterBus initialization")
         return False
-    if 'effectsBus' in content:
-        print("Found legacy effectsBus reference")
-        return False
+    if 'masterGain' in content:
+        # Note: masterGain might still be in comments or strings, but let's check for variable usage
+        if 'let masterGain =' in content or 'const masterGain =' in content:
+             print("Found legacy masterGain reference")
+             return False
 
     # Check for userVolume presence
     if 'let userVolume = 0.8;' not in content:
@@ -44,11 +46,14 @@ def test_extended_js_logic():
         return False
 
     # Check for updated updateMasterVolume logic
-    if 'userVolume / Math.max(1, activeSoundCount)' not in content:
+    if '1.0 / Math.max(1, activeSoundCount)' not in content:
         print("Missing updated gain calculation in updateMasterVolume")
         return False
-    if 'masterGain.gain.rampTo' not in content:
-        print("Missing masterGain.gain.rampTo in updateMasterVolume")
+    if 'masterBus.gain.rampTo' not in content:
+        print("Missing masterBus.gain.rampTo in updateMasterVolume")
+        return False
+    if 'Tone.Destination.volume.rampTo' not in content:
+        print("Missing Tone.Destination.volume.rampTo in updateMasterVolume")
         return False
 
     # Check for pointer events
@@ -62,6 +67,14 @@ def test_extended_js_logic():
     # Verify removal of openSettingsBtn
     if 'openSettingsBtn' in content:
         print("openSettingsBtn still present in JS")
+        return False
+
+    # Check for Panner
+    if 'panner = new Tone.Panner' not in content:
+        print("Missing Tone.Panner initialization")
+        return False
+    if 'panner.pan.rampTo' not in content:
+        print("Missing panner.pan.rampTo in orientation listener")
         return False
 
     return True
