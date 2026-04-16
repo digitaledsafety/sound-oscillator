@@ -8,6 +8,7 @@
       let beta = 0; // Device orientation values (pitch)
       let gamma = 0; // Device orientation values (panning)
       let panner = null; // Stereo panner for spatial audio
+      let delayEffect = null; // Global delay effect
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
       // --- Scale-related Global Variables and Definitions ---
@@ -34,6 +35,7 @@
 
       // D3.js visualization elements
       let waveformSvg = null;
+      let rippleGroup = null;
       let xScale = null;
       let yScale = null;
 
@@ -151,11 +153,18 @@
         });
         await reverb.ready;
 
+        // Delay effect
+        delayEffect = new Tone.FeedbackDelay({
+            delayTime: "4n",
+            feedback: 0.3,
+            wet: 0.2
+        });
+
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delayEffect, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -173,8 +182,9 @@
 
         // Stop the continuous instrument if it's active
         if (instrument) {
-          instrument.stop();
-          instrument.dispose(); // Dispose of the instrument to free up resources
+          // If it's a Synth (which doesn't have stop()), we triggerRelease or just dispose
+          // For a hard clear, dispose is sufficient but might click.
+          instrument.dispose();
           instrument = null;
         }
 
@@ -211,14 +221,15 @@
 
         if (instrument) {
           // If instrument is active, stop it
-          instrument.stop();
-          instrument.dispose();
+          instrument.triggerRelease();
+          const toDispose = instrument;
+          setTimeout(() => toDispose.dispose(), 500); // Allow time for release envelope
           instrument = null;
           //console.log("Continuous note instrument stopped.");
         } else {
           // If instrument is not active, start it
-          const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterBus).start();
+          instrument = createSynth();
+          instrument.triggerAttack(getNormalizedValue());
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -237,7 +248,6 @@
 
         // Ensure no continuous instrument is playing
         if (instrument) {
-          instrument.stop();
           instrument.dispose();
           instrument = null;
         }
@@ -302,6 +312,30 @@
         }
         //console.log(`Added a new fixed loop at frequency: ${fixedFrequency.toFixed(2)} Hz. Total loops: ${savedLoops.length}`);
         updateMasterVolume(); // Update volume after adding a new loop
+      }
+
+      /**
+       * Creates a ripple effect at the given coordinates on the SVG.
+       * @param {number} x - The x-coordinate.
+       * @param {number} y - The y-coordinate.
+       */
+      function createRipple(x, y) {
+        if (!rippleGroup) return;
+
+        rippleGroup.append("circle")
+          .attr("cx", x)
+          .attr("cy", y)
+          .attr("r", 5)
+          .attr("fill", "none")
+          .attr("stroke", "white")
+          .attr("stroke-width", 2)
+          .attr("opacity", 0.8)
+          .transition()
+          .duration(1000)
+          .ease(d3.easeOutExpo)
+          .attr("r", 100)
+          .attr("opacity", 0)
+          .remove();
       }
 
       /**
@@ -441,12 +475,14 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delaySlider = document.getElementById('delaySlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
+        rippleGroup = waveformSvg.append("g").attr("class", "ripple-group");
 
         // Get initial dimensions for scales (used for initial setup, then updated by resizeSvg)
         const initialWidth = window.innerWidth;
@@ -505,6 +541,11 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delaySlider.addEventListener('input', (e) => {
+            if (delayEffect) {
+                delayEffect.wet.value = parseFloat(e.target.value);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -532,7 +573,7 @@
           const freq = getNormalizedValue();
           // If the continuous instrument is active, update its frequency in real-time
           if (instrument) {
-            instrument.frequency.rampTo(freq, 0.05); // Smooth frequency transition
+            instrument.setNote(freq, 0.05); // Smooth frequency transition for FMSynth
           }
 
           // Update panner based on gamma (left/right tilt)
@@ -568,6 +609,12 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
+          if (pressTimer) clearTimeout(pressTimer);
+
+          // Trigger ripple effect
+          const [x, y] = d3.pointer(event);
+          createRipple(x, y);
+
           isLongPress = false;
           const touchCount = event.touches ? event.touches.length : 1;
           pressTimer = setTimeout(() => {

@@ -12,6 +12,8 @@ Sound Oscillator is a Progressive Web Application (PWA) that generates interacti
     *   **Long Press (on the visualizer area):** Toggles a continuous single note that changes pitch with device movement.
     *   **Double Tap (on the visualizer area):** Stops and clears all currently playing sounds.
 *   **Waveform Visualization:** A dynamic waveform display visualizes the sound being produced.
+*   **Interaction Feedback:** Visual ripple effects appear at the point of contact when interacting with the visualizer.
+*   **Audio Effects:** Includes a master delay effect with adjustable levels to add depth to the soundscapes.
 *   **Screen Wake Lock:** Keeps the screen active while you're using the app.
 *   **Offline Capable:** As a PWA, it can be installed to your device and used even when offline.
 
