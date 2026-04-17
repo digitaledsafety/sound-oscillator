@@ -133,6 +133,38 @@
       #startButton:active {
         transform: scale(0.95);
       }
+
+      /* Floating Settings Button */
+      #settingsToggleButton {
+        position: fixed;
+        top: 1.5rem;
+        right: 1.5rem;
+        width: 3.5rem;
+        height: 3.5rem;
+        background-color: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(8px);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        cursor: pointer;
+        z-index: 50;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        font-size: 1.75rem;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      #settingsToggleButton:hover {
+        background-color: rgba(255, 255, 255, 0.3);
+        transform: rotate(45deg) scale(1.05);
+      }
+
+      #settingsToggleButton:active {
+        transform: scale(0.95);
+      }
     </style>
   </head>
   <body>
@@ -145,6 +177,9 @@
 
     <svg id="waveformSvg"></svg>
 
+    <div id="settingsToggleButton" title="Open Settings" aria-label="Open Settings">
+      ⚙️
+    </div>
 
     <div id="settingsModal">
       <div id="modalContent">
@@ -188,6 +223,11 @@
         <div class="mb-4">
           <label for="volumeSlider" class="modal-label">Master Volume</label>
           <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
+
+        <div class="mb-4">
+          <label for="delaySlider" class="modal-label">Delay Amount</label>
+          <input type="range" id="delaySlider" min="0" max="1" step="0.01" value="0" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
         </div>
 
         <div class="mb-6">
