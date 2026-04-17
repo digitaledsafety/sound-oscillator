@@ -8,6 +8,7 @@
       let beta = 0; // Device orientation values (pitch)
       let gamma = 0; // Device orientation values (panning)
       let panner = null; // Stereo panner for spatial audio
+      let delay = null; // Feedback delay effect
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
       // --- Scale-related Global Variables and Definitions ---
@@ -119,6 +120,9 @@
         // Using raw beta directly as per user-provided original logic
         let rawFreq = ((Math.sin(beta * (Math.PI / 180))) * maxFrequency + maxFrequency) / 2;
 
+        // Ensure a minimum frequency floor (20Hz) to prevent zero-frequency audio issues
+        rawFreq = Math.max(20, rawFreq);
+
         // If a scale is selected (i.e., not 'Off'), snap the frequency
         if (currentScaleConfig && currentScaleConfig.intervals && generatedScaleFrequencies.length > 0) {
           rawFreq = getSnappedFrequency(rawFreq);
@@ -154,8 +158,12 @@
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
-        // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        // Feedback Delay for echo effects
+        delay = new Tone.FeedbackDelay("4n", 0.5).connect(panner);
+        delay.wet.value = document.getElementById('delaySlider') ? parseFloat(document.getElementById('delaySlider').value) : 0;
+
+        // Chain the effects to the delay and panner
+        masterBus.chain(lowBump, masterCompressor, reverb, delay);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -413,6 +421,16 @@
           display.textContent = `${freq.toFixed(2)} Hz (${note})`;
         }
 
+        // Update Beta/Gamma display
+        const betaDisplay = document.getElementById('betaDisplay');
+        if (betaDisplay) {
+            betaDisplay.textContent = `Beta: ${beta.toFixed(1)}°`;
+        }
+        const gammaDisplay = document.getElementById('gammaDisplay');
+        if (gammaDisplay) {
+            gammaDisplay.textContent = `Gamma: ${gamma.toFixed(1)}°`;
+        }
+
         // Request the next frame
         requestAnimationFrame(updateWaveformVisualization);
       }
@@ -441,9 +459,11 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delaySlider = document.getElementById('delaySlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const settingsToggleButton = document.getElementById('settingsToggleButton');
 
         // Select the SVG element using D3
         waveformSvg = d3.select("#waveformSvg");
@@ -505,8 +525,14 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delaySlider.addEventListener('input', (e) => {
+            if (delay) {
+                delay.wet.rampTo(parseFloat(e.target.value), 0.1);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
+        settingsToggleButton.addEventListener('click', showSettings);
         settingsModal.addEventListener('click', (e) => {
             if (e.target === settingsModal) hideSettings();
         });
@@ -518,16 +544,6 @@
         window.addEventListener("deviceorientation", (event) => {
           beta = event.beta !== null ? event.beta.valueOf() : beta;
           gamma = event.gamma !== null ? event.gamma.valueOf() : gamma;
-
-          // Update Beta/Gamma display
-          const betaDisplay = document.getElementById('betaDisplay');
-          if (betaDisplay) {
-              betaDisplay.textContent = `Beta: ${beta.toFixed(1)}°`;
-          }
-          const gammaDisplay = document.getElementById('gammaDisplay');
-          if (gammaDisplay) {
-              gammaDisplay.textContent = `Gamma: ${gamma.toFixed(1)}°`;
-          }
 
           const freq = getNormalizedValue();
           // If the continuous instrument is active, update its frequency in real-time
