@@ -8,6 +8,7 @@
       let beta = 0; // Device orientation values (pitch)
       let gamma = 0; // Device orientation values (panning)
       let panner = null; // Stereo panner for spatial audio
+      let delayNode = null; // Feedback delay for spatial depth
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
       // --- Scale-related Global Variables and Definitions ---
@@ -38,10 +39,13 @@
       let yScale = null;
 
       let waveformAnalyzer = null;
+      let fftAnalyzer = null;
+      let vizModeSelect = null;
       const barCount = 64; // Number of bars to display in the visualization
       // Removed minBarHeight global variable, now calculated dynamically
 
       // Long press and double tap variables
+      let activePointers = new Set();
       let pressTimer = null;
       const longPressDuration = 500; // milliseconds
       let isLongPress = false;
@@ -154,12 +158,21 @@
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
+        // Feedback Delay for spatial depth
+        delayNode = new Tone.FeedbackDelay({
+          delayTime: "4n",
+          feedback: 0.3,
+          wet: 0.2
+        });
+
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delayNode, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
+        fftAnalyzer = new Tone.FFT(1024); // 1024 bins for the FFT
         Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
+        Tone.Destination.connect(fftAnalyzer); // Connect destination output to analyzer
 
         //console.log("Tone.js audio context ready to start on interaction.");
       }
@@ -355,13 +368,26 @@
 
       // Function to update the D3.js bar graph visualization
       function updateWaveformVisualization() {
-        if (!waveformAnalyzer || !waveformSvg) {
+        if (!waveformAnalyzer || !fftAnalyzer || !waveformSvg) {
           requestAnimationFrame(updateWaveformVisualization);
           return;
         }
 
-        // Get the waveform data from the analyzer
-        const waveformArray = waveformAnalyzer.getValue();
+        const vizMode = vizModeSelect ? vizModeSelect.value : 'waveform';
+        let dataArray;
+        let visualGain = 1.0;
+
+        if (vizMode === 'spectrum') {
+            // Get FFT data (decibels)
+            const dbArray = fftAnalyzer.getValue();
+            // Map decibels to 0-1 range (-100dB to 0dB)
+            dataArray = dbArray.map(db => Math.max(0, (db + 100) / 100));
+            visualGain = 1.2;
+        } else {
+            // Get waveform data
+            dataArray = waveformAnalyzer.getValue();
+            visualGain = 2.0;
+        }
 
         // Get current SVG dimensions
         const svgWidth = waveformSvg.node().clientWidth;
@@ -371,17 +397,16 @@
         const minBarHeight = svgHeight * 0.01; // 1% of SVG height
 
         // Calculate samples per bar and bar width
-        const samplesPerBar = Math.floor(waveformArray.length / barCount);
+        const samplesPerBar = Math.floor(dataArray.length / barCount);
         const barWidth = svgWidth / barCount;
 
         // Prepare data for bars (average amplitude for each segment)
         const barData = [];
-        const visualGain = 2.0; // Factor to visually amplify low signals
         for (let i = 0; i < barCount; i++) {
           let sum = 0;
           for (let j = 0; j < samplesPerBar; j++) {
             // Apply visualGain here to amplify for visualization, and clamp to 1.0
-            sum += Math.min(1.0, Math.abs(waveformArray[i * samplesPerBar + j]) * visualGain);
+            sum += Math.min(1.0, Math.abs(dataArray[i * samplesPerBar + j]) * visualGain);
           }
           barData.push(sum / samplesPerBar); // Average amplitude for the bar
         }
@@ -441,6 +466,8 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delaySlider = document.getElementById('delaySlider');
+        vizModeSelect = document.getElementById('vizModeSelect');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -505,6 +532,11 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delaySlider.addEventListener('input', (e) => {
+            if (delayNode) {
+                delayNode.feedback.rampTo(parseFloat(e.target.value), 0.1);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -568,11 +600,13 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
+          activePointers.add(event.pointerId);
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+
+          clearTimeout(pressTimer);
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (touchCount === 2) {
+            if (activePointers.size >= 2) {
                 showSettings();
             } else {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
@@ -580,7 +614,13 @@
           }, longPressDuration);
         });
 
+        waveformSvg.on("pointercancel", function(event) {
+          activePointers.delete(event.pointerId);
+          clearTimeout(pressTimer);
+        });
+
         waveformSvg.on("pointerup", function(event) {
+          activePointers.delete(event.pointerId);
           clearTimeout(pressTimer); // Clear long press timer
           if (isLongPress) {
               isLongPress = false; // Reset long press flag

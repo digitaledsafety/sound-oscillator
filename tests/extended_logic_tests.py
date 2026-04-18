@@ -77,6 +77,21 @@ def test_extended_js_logic():
         print("Missing panner.pan.rampTo in orientation listener")
         return False
 
+    # Check for DelayNode
+    if 'delayNode = new Tone.FeedbackDelay' not in content:
+        print("Missing Tone.FeedbackDelay initialization")
+        return False
+
+    # Check for FFT
+    if 'fftAnalyzer = new Tone.FFT' not in content:
+        print("Missing Tone.FFT initialization")
+        return False
+
+    # Check for visualization mode logic
+    if "document.getElementById('vizModeSelect')" not in content:
+        print("Missing vizModeSelect usage in JS")
+        return False
+
     return True
 
 if __name__ == "__main__":
