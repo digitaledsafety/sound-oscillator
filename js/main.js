@@ -3,6 +3,8 @@
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterBus = null; // Central gain node for effects routing
+      const activePointers = new Map(); // Map to track active pointers (for multi-touch handling)
+      let delay = null; // FeedbackDelay node for spatial effects
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
@@ -151,11 +153,17 @@
         });
         await reverb.ready;
 
+        // FeedbackDelay for rhythmic texture
+        const delayWetSlider = document.getElementById('delayWetSlider');
+        const initialDelayWet = delayWetSlider ? parseFloat(delayWetSlider.value) : 0.5;
+        delay = new Tone.FeedbackDelay("8n", 0.5);
+        delay.wet.value = initialDelayWet;
+
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delay, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -505,6 +513,15 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        const delayWetSlider = document.getElementById('delayWetSlider');
+        if (delayWetSlider) {
+            delayWetSlider.addEventListener('input', (e) => {
+                const wetValue = parseFloat(e.target.value);
+                if (delay) {
+                    delay.wet.rampTo(wetValue, 0.1);
+                }
+            });
+        }
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -568,20 +585,42 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
+          // Track pointer
+          activePointers.set(event.pointerId, event);
+
+          // Ensure audio context is started/resumed on interaction
+          await startSounds();
+          if (Tone.context.state !== 'running') {
+            await Tone.start();
+          }
+
+          // Clear any existing timer to prevent race conditions with multiple fingers
+          if (pressTimer) {
+            clearTimeout(pressTimer);
+          }
+
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (touchCount === 2) {
+            // Check current pointer count when timer fires
+            if (activePointers.size === 2) {
                 showSettings();
-            } else {
+            } else if (activePointers.size === 1) {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
             }
+            pressTimer = null;
           }, longPressDuration);
         });
 
         waveformSvg.on("pointerup", function(event) {
-          clearTimeout(pressTimer); // Clear long press timer
+          // Remove pointer from tracking
+          activePointers.delete(event.pointerId);
+
+          if (pressTimer) {
+              clearTimeout(pressTimer); // Clear long press timer
+              pressTimer = null;
+          }
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
               return; // Long press already handled
@@ -602,6 +641,15 @@
               lastTapTime = currentTime;
           }
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
+        });
+
+        waveformSvg.on("pointercancel", function(event) {
+          activePointers.delete(event.pointerId);
+          if (pressTimer) {
+              clearTimeout(pressTimer);
+              pressTimer = null;
+          }
+          isLongPress = false;
         });
 
         // Register the service worker

@@ -77,6 +77,36 @@ def test_extended_js_logic():
         print("Missing panner.pan.rampTo in orientation listener")
         return False
 
+    # Check for activePointers Map initialization
+    if 'const activePointers = new Map();' not in content:
+        print("Missing activePointers Map initialization")
+        return False
+
+    # Check for activePointers.set in pointerdown
+    if 'activePointers.set(event.pointerId, event);' not in content:
+        print("Missing activePointers.set in pointerdown")
+        return False
+
+    # Check for activePointers.delete in pointerup
+    if 'activePointers.delete(event.pointerId);' not in content:
+        print("Missing activePointers.delete in pointerup")
+        return False
+
+    # Check for activePointers.size usage
+    if 'activePointers.size' not in content:
+        print("Missing activePointers.size usage")
+        return False
+
+    # Check for Tone.FeedbackDelay initialization
+    if 'new Tone.FeedbackDelay' not in content:
+        print("Missing Tone.FeedbackDelay initialization")
+        return False
+
+    # Check for delay in masterBus.chain
+    if re.search(r'masterBus\.chain\(.*delay.*panner\)', content) is None:
+        print("Missing delay in masterBus.chain before panner")
+        return False
+
     return True
 
 if __name__ == "__main__":
