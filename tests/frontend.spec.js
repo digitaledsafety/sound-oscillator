@@ -46,4 +46,16 @@ test.describe('Sound Oscillator Frontend Tests', () => {
     await expect(page.locator('#betaDisplay')).toContainText('Beta:');
     await expect(page.locator('#gammaDisplay')).toContainText('Gamma:');
   });
+
+  test('should have delay controls in settings', async ({ page }) => {
+    await page.keyboard.press('m');
+    const delayWet = page.locator('#delayWetSlider');
+    const delayTime = page.locator('#delayTimeSlider');
+
+    await expect(delayWet).toBeVisible();
+    await expect(delayTime).toBeVisible();
+
+    await expect(delayWet).toHaveValue('0.2');
+    await expect(delayTime).toHaveValue('0.5');
+  });
 });
