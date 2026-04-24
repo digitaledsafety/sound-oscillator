@@ -138,9 +138,10 @@
   <body>
     <div id="startOverlay">
       <h1 class="text-4xl font-bold mb-4">Sound Oscillator</h1>
-      <p class="mb-8 text-lg opacity-80">Tilt your device to explore soundscapes.</p>
-      <button id="startButton">Tap to Start</button>
-      <p class="mt-8 text-xs opacity-50">Requires audio and motion sensor permissions.</p>
+      <p class="mb-4 text-lg opacity-80">Tilt your device to explore soundscapes.</p>
+      <button id="startButton" class="mb-6">Tap to Start</button>
+      <p class="text-sm opacity-70 italic mb-8">Use a 2-finger long press or the 'm' key to access settings.</p>
+      <p class="mt-4 text-xs opacity-50">Requires audio and motion sensor permissions.</p>
     </div>
 
     <svg id="waveformSvg"></svg>
@@ -186,8 +187,21 @@
         </div>
 
         <div class="mb-4">
+          <label for="vizModeSelect" class="modal-label">Visualizer Mode</label>
+          <select id="vizModeSelect" title="Select Visualizer Mode" aria-label="Select Visualizer Mode">
+            <option value="waveform">Waveform</option>
+            <option value="spectrum">Spectrum</option>
+          </select>
+        </div>
+
+        <div class="mb-4">
           <label for="volumeSlider" class="modal-label">Master Volume</label>
           <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
+        </div>
+
+        <div class="mb-4">
+          <label for="delaySlider" class="modal-label">Delay Feedback</label>
+          <input type="range" id="delaySlider" min="0" max="0.9" step="0.01" value="0.3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600">
         </div>
 
         <div class="mb-6">
