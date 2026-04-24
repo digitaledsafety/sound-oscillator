@@ -77,6 +77,35 @@ def test_extended_js_logic():
         print("Missing panner.pan.rampTo in orientation listener")
         return False
 
+    # Check for Delay node
+    if 'delayNode = new Tone.FeedbackDelay' not in content:
+        print("Missing Tone.FeedbackDelay initialization")
+        return False
+    if 'delaySlider' not in content:
+        print("Missing delaySlider listener")
+        return False
+
+    # Check for FFT/Spectrum
+    if 'spectrumAnalyzer = new Tone.FFT' not in content:
+        print("Missing Tone.FFT initialization")
+        return False
+    if 'vizModeSelect' not in content:
+        print("Missing vizModeSelect usage")
+        return False
+
+    # Check for Pointer Set
+    if 'const activePointers = new Set()' not in content:
+        print("Missing activePointers Set")
+        return False
+    if 'activePointers.add' not in content or 'activePointers.delete' not in content:
+        print("Missing activePointers Set operations")
+        return False
+
+    # Check for D3 .join() pattern
+    if '.join("rect")' not in content:
+        print("Missing D3 .join() pattern")
+        return False
+
     return True
 
 if __name__ == "__main__":
