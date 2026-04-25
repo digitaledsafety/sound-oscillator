@@ -3,6 +3,7 @@
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterBus = null; // Central gain node for effects routing
+      let delayEffect = null; // Master feedback delay effect
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
@@ -45,6 +46,7 @@
       let pressTimer = null;
       const longPressDuration = 500; // milliseconds
       let isLongPress = false;
+      let activePointers = new Set();
       let lastTapTime = 0;
       const doubleTapThreshold = 300; // milliseconds
 
@@ -151,11 +153,20 @@
         });
         await reverb.ready;
 
+        // Feedback Delay
+        const initialDelayWet = parseFloat(document.getElementById('delayWetSlider').value);
+        const initialDelayTime = document.getElementById('delayTimeSlider').value;
+        delayEffect = new Tone.FeedbackDelay({
+            delayTime: initialDelayTime,
+            feedback: 0.5,
+            wet: initialDelayWet
+        });
+
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delayEffect, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -417,6 +428,32 @@
         requestAnimationFrame(updateWaveformVisualization);
       }
 
+    /**
+     * Creates a visual ripple effect at the given coordinates.
+     * @param {number} x - The x-coordinate in the SVG.
+     * @param {number} y - The y-coordinate in the SVG.
+     * @param {string} color - The color of the ripple.
+     */
+    function createRipple(x, y, color = "#3498db") {
+      if (!waveformSvg) return;
+
+      const ripple = waveformSvg.append("circle")
+          .attr("cx", x)
+          .attr("cy", y)
+          .attr("r", 0)
+          .attr("fill", "none")
+          .attr("stroke", color)
+          .attr("stroke-width", 2)
+          .attr("opacity", 1);
+
+      ripple.transition()
+          .duration(1000)
+          .ease(d3.easeOutExpo)
+          .attr("r", 150)
+          .attr("opacity", 0)
+          .remove();
+    }
+
       // Handle SVG resizing
       function resizeSvg() {
         if (waveformSvg) {
@@ -441,6 +478,8 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delayWetSlider = document.getElementById('delayWetSlider');
+        const delayTimeSlider = document.getElementById('delayTimeSlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -505,6 +544,16 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delayWetSlider.addEventListener('input', (e) => {
+            if (delayEffect) {
+                delayEffect.wet.rampTo(parseFloat(e.target.value), 0.1);
+            }
+        });
+        delayTimeSlider.addEventListener('change', (e) => {
+            if (delayEffect) {
+                delayEffect.delayTime.rampTo(e.target.value, 0.5);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -567,25 +616,42 @@
         });
 
         // Event listeners for tap (click) and long press on the SVG visualizer
-        waveformSvg.on("pointerdown", async function(event) {
+        waveformSvg.on("pointerdown", function(event) {
+          const [x, y] = d3.pointer(event);
+          activePointers.add(event.pointerId);
+
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+          const currentPointers = activePointers.size;
+
+          // Visual feedback for interaction
+          createRipple(x, y, currentPointers >= 2 ? "#e74c3c" : "#3498db");
+
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (touchCount === 2) {
+            if (activePointers.size >= 2) {
                 showSettings();
+                // Visual confirmation for multi-finger long press
+                createRipple(x, y, "#f1c40f");
             } else {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
+                // Visual confirmation for long press
+                createRipple(x, y, "#2ecc71");
             }
           }, longPressDuration);
         });
 
         waveformSvg.on("pointerup", function(event) {
+          activePointers.delete(event.pointerId);
           clearTimeout(pressTimer); // Clear long press timer
+
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
               return; // Long press already handled
           }
+
+          // If another finger is still down, we might not want to trigger tap logic yet
+          // but for this app, we'll keep it simple.
+          if (activePointers.size > 0) return;
 
           const currentTime = performance.now(); // Use performance.now() for UI event timing
           if (currentTime - lastTapTime < doubleTapThreshold) {
@@ -602,6 +668,11 @@
               lastTapTime = currentTime;
           }
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
+        });
+
+        waveformSvg.on("pointercancel", function(event) {
+          activePointers.delete(event.pointerId);
+          clearTimeout(pressTimer);
         });
 
         // Register the service worker
