@@ -64,6 +64,16 @@ def test_extended_js_logic():
         print("Missing pointerup event listener")
         return False
 
+    # Check for multi-touch support
+    if 'const activePointers = new Map();' not in content:
+        print("Missing activePointers initialization")
+        return False
+
+    # Check for delay wet slider logic
+    if 'delayWetSlider' not in content:
+        print("Missing delayWetSlider reference in JS")
+        return False
+
     # Verify removal of openSettingsBtn
     if 'openSettingsBtn' in content:
         print("openSettingsBtn still present in JS")

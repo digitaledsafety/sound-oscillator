@@ -3,12 +3,15 @@
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterBus = null; // Central gain node for effects routing
+      let delay = null; // Global delay effect
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
       let gamma = 0; // Device orientation values (panning)
       let panner = null; // Stereo panner for spatial audio
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
+
+      const activePointers = new Map(); // Track active pointers for multi-touch
 
       // --- Scale-related Global Variables and Definitions ---
       let currentScaleConfig = null; // Holds the { rootNote, intervals } for the selected scale
@@ -151,11 +154,15 @@
         });
         await reverb.ready;
 
+        // Feedback Delay
+        delay = new Tone.FeedbackDelay("8n", 0.5);
+        delay.wet.value = 0.3; // Initial wet value
+
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, delay, reverb, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -441,6 +448,7 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delayWetSlider = document.getElementById('delayWetSlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -505,6 +513,12 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delayWetSlider.addEventListener('input', (e) => {
+            const wetValue = parseFloat(e.target.value);
+            if (delay) {
+                delay.wet.rampTo(wetValue, 0.1);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -568,11 +582,42 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
+          // Initialize sounds on interaction
+          await startSounds();
+
+          activePointers.set(event.pointerId, {
+            x: event.clientX,
+            y: event.clientY,
+            startTime: performance.now()
+          });
+
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+
+          // Clear existing timer to ensure only one long press action triggers per gesture set
+          if (pressTimer) clearTimeout(pressTimer);
+
+          // Visual feedback: ripples
+          // Use d3.pointer to get coordinates relative to the SVG element
+          const [ptrX, ptrY] = d3.pointer(event, waveformSvg.node());
+
+          const ripple = waveformSvg.append("circle")
+              .attr("cx", ptrX)
+              .attr("cy", ptrY)
+              .attr("r", 0)
+              .attr("fill", "none")
+              .attr("stroke", "white")
+              .attr("stroke-width", 2)
+              .attr("opacity", 0.5);
+
+          ripple.transition()
+              .duration(1000)
+              .attr("r", 100)
+              .attr("opacity", 0)
+              .remove();
+
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (touchCount === 2) {
+            if (activePointers.size >= 2) {
                 showSettings();
             } else {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
@@ -581,27 +626,54 @@
         });
 
         waveformSvg.on("pointerup", function(event) {
-          clearTimeout(pressTimer); // Clear long press timer
-          if (isLongPress) {
-              isLongPress = false; // Reset long press flag
-              return; // Long press already handled
+          const pointerData = activePointers.get(event.pointerId);
+          if (activePointers.has(event.pointerId)) {
+            activePointers.delete(event.pointerId);
           }
 
-          const currentTime = performance.now(); // Use performance.now() for UI event timing
-          if (currentTime - lastTapTime < doubleTapThreshold) {
-              // This is a double tap
-              clearSounds();
-              lastTapTime = 0; // Reset to prevent triple taps from being double taps
-          } else {
-              // This is a single tap (or the first tap of a potential double tap)
-              if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
-                  addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
-              } else {
-                  startPreviewLoop(); // Otherwise, start the dynamic preview loop
+          // If no more pointers are active, we can clear the press timer
+          if (activePointers.size === 0) {
+            clearTimeout(pressTimer);
+          }
+
+          if (isLongPress) {
+              // If it was a long press, we don't handle taps.
+              // We only reset isLongPress when all pointers are up.
+              if (activePointers.size === 0) {
+                isLongPress = false;
               }
-              lastTapTime = currentTime;
+              return;
+          }
+
+          // Check if this pointer release constitutes a tap
+          const currentTime = performance.now();
+          const duration = pointerData ? currentTime - pointerData.startTime : 0;
+
+          // Only consider it a tap if the duration was short
+          if (duration < longPressDuration) {
+              if (currentTime - lastTapTime < doubleTapThreshold) {
+                  // This is a double tap
+                  clearSounds();
+                  lastTapTime = 0; // Reset to prevent triple taps from being double taps
+              } else {
+                  // This is a single tap (or the first tap of a potential double tap)
+                  if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
+                      addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
+                  } else {
+                      startPreviewLoop(); // Otherwise, start the dynamic preview loop
+                  }
+                  lastTapTime = currentTime;
+              }
           }
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
+        });
+
+        waveformSvg.on("pointercancel", function(event) {
+          activePointers.delete(event.pointerId);
+          if (activePointers.size === 0) {
+            clearTimeout(pressTimer);
+            isLongPress = false;
+          }
         });
 
         // Register the service worker
