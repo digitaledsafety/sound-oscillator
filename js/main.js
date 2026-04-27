@@ -3,6 +3,8 @@
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterBus = null; // Central gain node for effects routing
+      let reverb = null; // Reverb effect
+      let delayEffect = null; // Delay effect
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
@@ -47,6 +49,9 @@
       let isLongPress = false;
       let lastTapTime = 0;
       const doubleTapThreshold = 300; // milliseconds
+
+      // Multi-touch tracking
+      const activePointers = new Set();
 
       // --- Scale-related Functions ---
 
@@ -145,17 +150,24 @@
         const lowBump = new Tone.Filter(200, "lowshelf");
 
         // Reverb for spatial depth
-        const reverb = new Tone.Reverb({
+        reverb = new Tone.Reverb({
           decay: 2,
-          wet: 0.3
+          wet: parseFloat(document.getElementById('reverbWetSlider').value)
         });
         await reverb.ready;
+
+        // Delay effect
+        delayEffect = new Tone.FeedbackDelay({
+          delayTime: parseFloat(document.getElementById('delayTimeSlider').value),
+          feedback: 0.3,
+          wet: parseFloat(document.getElementById('delayWetSlider').value)
+        });
 
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delayEffect, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -418,6 +430,27 @@
       }
 
       // Handle SVG resizing
+      // Function to create an animated ripple effect on interaction
+      function createRipple(x, y) {
+        if (!waveformSvg) return;
+
+        const ripple = waveformSvg.append("circle")
+          .attr("cx", x)
+          .attr("cy", y)
+          .attr("r", 0)
+          .attr("fill", "none")
+          .attr("stroke", "#3498db")
+          .attr("stroke-width", 2)
+          .attr("opacity", 1);
+
+        ripple.transition()
+          .duration(1000)
+          .ease(d3.easeOutExpo)
+          .attr("r", 150)
+          .attr("opacity", 0)
+          .remove();
+      }
+
       function resizeSvg() {
         if (waveformSvg) {
           const svgElement = waveformSvg.node();
@@ -441,6 +474,9 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const reverbWetSlider = document.getElementById('reverbWetSlider');
+        const delayWetSlider = document.getElementById('delayWetSlider');
+        const delayTimeSlider = document.getElementById('delayTimeSlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -500,10 +536,33 @@
 
         scaleSelect.addEventListener('change', updateScaleSettings);
         rootNoteSelect.addEventListener('change', updateScaleSettings);
-        waveformSelect.addEventListener('change', () => clearSounds()); // Reset sounds when waveform changes
+        waveformSelect.addEventListener('change', (e) => {
+            const newWaveform = e.target.value;
+            // Update all active instruments/synths instead of clearing
+            if (instrument) {
+                instrument.type = newWaveform;
+            }
+            if (previewLoop && previewLoop.synth) {
+                previewLoop.synth.oscillator.type = newWaveform;
+            }
+            savedLoops.forEach(loop => {
+                if (loop.synth) {
+                    loop.synth.oscillator.type = newWaveform;
+                }
+            });
+        });
         volumeSlider.addEventListener('input', (e) => {
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
+        });
+        reverbWetSlider.addEventListener('input', (e) => {
+            if (reverb) reverb.wet.rampTo(parseFloat(e.target.value), 0.1);
+        });
+        delayWetSlider.addEventListener('input', (e) => {
+            if (delayEffect) delayEffect.wet.rampTo(parseFloat(e.target.value), 0.1);
+        });
+        delayTimeSlider.addEventListener('input', (e) => {
+            if (delayEffect) delayEffect.delayTime.rampTo(parseFloat(e.target.value), 0.1);
         });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
@@ -568,11 +627,18 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
+          activePointers.add(event.pointerId);
+
+          // Get pointer coordinates for ripple effect
+          const [x, y] = d3.pointer(event);
+          createRipple(x, y);
+
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+
+          clearTimeout(pressTimer);
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (touchCount === 2) {
+            if (activePointers.size >= 2) {
                 showSettings();
             } else {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
@@ -581,7 +647,9 @@
         });
 
         waveformSvg.on("pointerup", function(event) {
+          activePointers.delete(event.pointerId);
           clearTimeout(pressTimer); // Clear long press timer
+
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
               return; // Long press already handled
@@ -602,6 +670,11 @@
               lastTapTime = currentTime;
           }
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
+        });
+
+        waveformSvg.on("pointercancel", function(event) {
+          activePointers.delete(event.pointerId);
+          clearTimeout(pressTimer);
         });
 
         // Register the service worker
