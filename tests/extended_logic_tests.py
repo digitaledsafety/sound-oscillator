@@ -56,17 +56,31 @@ def test_extended_js_logic():
         print("Missing Tone.Destination.volume.rampTo in updateMasterVolume")
         return False
 
-    # Check for pointer events
+    # Check for pointer events and activePointers
+    if 'const activePointers = new Map();' not in content:
+        print("Missing activePointers Map initialization")
+        return False
     if 'pointerdown' not in content:
         print("Missing pointerdown event listener")
         return False
     if 'pointerup' not in content:
         print("Missing pointerup event listener")
         return False
+    if 'pointercancel' not in content:
+        print("Missing pointercancel event listener")
+        return False
 
     # Verify removal of openSettingsBtn
     if 'openSettingsBtn' in content:
         print("openSettingsBtn still present in JS")
+        return False
+
+    # Check for FeedbackDelay
+    if 'delay = new Tone.FeedbackDelay' not in content:
+        print("Missing FeedbackDelay initialization")
+        return False
+    if 'delayWetSlider' not in content:
+        print("Missing delayWetSlider reference in JS")
         return False
 
     # Check for Panner
