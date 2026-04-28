@@ -3,6 +3,7 @@
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterBus = null; // Central gain node for effects routing
+      let delay = null; // Feedback delay effect
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
@@ -41,7 +42,8 @@
       const barCount = 64; // Number of bars to display in the visualization
       // Removed minBarHeight global variable, now calculated dynamically
 
-      // Long press and double tap variables
+      // Long press and multi-touch interaction tracking
+      const activePointers = new Map();
       let pressTimer = null;
       const longPressDuration = 500; // milliseconds
       let isLongPress = false;
@@ -87,6 +89,33 @@
         return new Tone.FMSynth({
           oscillator: { type: selectedWaveform }
         }).connect(masterBus);
+      }
+
+      /**
+       * Creates a visual ripple effect at the given coordinates using D3.js.
+       * @param {number} x - The x-coordinate for the ripple center.
+       * @param {number} y - The y-coordinate for the ripple center.
+       */
+      function createRipple(x, y) {
+        if (!waveformSvg) return;
+
+        // Use d3.pointer to get coordinates relative to the SVG element
+        // Since we're using event.clientX/Y from the pointer event, we can also use d3.pointer with the event.
+        // For simplicity here, let's assume x and y passed are already relative or we use d3.pointer in the caller.
+
+        waveformSvg.append("circle")
+          .attr("cx", x)
+          .attr("cy", y)
+          .attr("r", 0)
+          .attr("fill", "none")
+          .attr("stroke", "rgba(255, 255, 255, 0.8)")
+          .attr("stroke-width", 2)
+          .transition()
+          .duration(1000)
+          .ease(d3.easeOutExpo)
+          .attr("r", 100)
+          .attr("stroke", "rgba(255, 255, 255, 0)")
+          .remove();
       }
 
       /**
@@ -151,11 +180,15 @@
         });
         await reverb.ready;
 
+        // Feedback Delay for rhythmic depth
+        delay = new Tone.FeedbackDelay("8n", 0.5);
+        delay.wet.value = 0.2; // Default wetness
+
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delay, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -198,6 +231,12 @@
           loop.dispose(); // Dispose of each loop
         });
         savedLoops = []; // Clear the saved loops array
+
+        // Reset delay wetness to default or clear it if necessary
+        if (delay) {
+            // delay.wet.rampTo(0.2, 0.1);
+        }
+
         //console.log("All sounds cleared.");
         updateMasterVolume(); // Update volume after clearing sounds
       }
@@ -441,6 +480,7 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delayWetSlider = document.getElementById('delayWetSlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -505,6 +545,12 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delayWetSlider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            if (delay) {
+                delay.wet.rampTo(val, 0.1);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -566,42 +612,74 @@
           //console.log("Audio context started and orientation permission requested.");
         });
 
-        // Event listeners for tap (click) and long press on the SVG visualizer
+        // Event listeners for multi-touch interaction and gestures
         waveformSvg.on("pointerdown", async function(event) {
+          // Initialize audio context on user interaction
+          await startSounds();
+
+          // Calculate pointer position relative to the SVG
+          const [x, y] = d3.pointer(event, waveformSvg.node());
+
+          // Track the pointer
+          activePointers.set(event.pointerId, {
+            startTime: performance.now(),
+            x: x,
+            y: y
+          });
+
+          // Create a visual ripple at the pointer location
+          createRipple(x, y);
+
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+          clearTimeout(pressTimer); // Clear any existing timer to avoid overlaps
+
+          // Set a timer for long-press detection
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (touchCount === 2) {
-                showSettings();
-            } else {
+            // Differentiate actions based on the number of active pointers
+            if (activePointers.size === 1) {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
+            } else if (activePointers.size === 2) {
+                showSettings(); // 2-finger long press opens settings
             }
           }, longPressDuration);
         });
 
         waveformSvg.on("pointerup", function(event) {
-          clearTimeout(pressTimer); // Clear long press timer
+          // Retrieve pointer data before deleting
+          const pointerData = activePointers.get(event.pointerId);
+          clearTimeout(pressTimer); // Clear the long press timer
+
+          if (!pointerData) return;
+
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
+              activePointers.delete(event.pointerId);
               return; // Long press already handled
           }
 
-          const currentTime = performance.now(); // Use performance.now() for UI event timing
+          const currentTime = performance.now();
           if (currentTime - lastTapTime < doubleTapThreshold) {
               // This is a double tap
               clearSounds();
-              lastTapTime = 0; // Reset to prevent triple taps from being double taps
+              lastTapTime = 0;
           } else {
-              // This is a single tap (or the first tap of a potential double tap)
-              if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
-                  addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
+              // This is a single tap
+              if (instrument || previewLoop || savedLoops.length > 0) {
+                  addFixedLoop();
               } else {
-                  startPreviewLoop(); // Otherwise, start the dynamic preview loop
+                  startPreviewLoop();
               }
               lastTapTime = currentTime;
           }
-          event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
+
+          activePointers.delete(event.pointerId);
+          event.preventDefault();
+        });
+
+        waveformSvg.on("pointercancel", function(event) {
+          clearTimeout(pressTimer);
+          activePointers.delete(event.pointerId);
         });
 
         // Register the service worker

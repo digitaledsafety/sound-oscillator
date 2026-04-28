@@ -14,6 +14,14 @@ def test_js_logic_integrity():
         print("Missing performance.now()")
         return False
 
+    # Check for visual ripple effect
+    if 'function createRipple' not in content:
+        print("Missing createRipple function")
+        return False
+    if 'd3.pointer' not in content:
+        print("Missing d3.pointer usage")
+        return False
+
     # Check for Reverb (correct implementation without circular routing)
     if 'new Tone.Reverb' not in content:
         print("Missing Tone.Reverb")

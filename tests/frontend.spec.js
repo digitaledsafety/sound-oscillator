@@ -38,6 +38,7 @@ test.describe('Sound Oscillator Frontend Tests', () => {
     await expect(page.locator('#scaleSelect')).toBeVisible();
     await expect(page.locator('#waveformSelect')).toBeVisible();
     await expect(page.locator('#volumeSlider')).toBeVisible();
+    await expect(page.locator('#delayWetSlider')).toBeVisible();
     await expect(page.locator('#clearAllBtn')).toBeVisible();
   });
 
