@@ -8,6 +8,7 @@
       let beta = 0; // Device orientation values (pitch)
       let gamma = 0; // Device orientation values (panning)
       let panner = null; // Stereo panner for spatial audio
+      let delay = null; // Feedback delay effect
       const maxFrequency = 880; // Maximum frequency for the oscillator/synth (approx A5)
 
       // --- Scale-related Global Variables and Definitions ---
@@ -119,6 +120,9 @@
         // Using raw beta directly as per user-provided original logic
         let rawFreq = ((Math.sin(beta * (Math.PI / 180))) * maxFrequency + maxFrequency) / 2;
 
+        // Enforce a minimum frequency floor of 20Hz as per project standards
+        rawFreq = Math.max(20, rawFreq);
+
         // If a scale is selected (i.e., not 'Off'), snap the frequency
         if (currentScaleConfig && currentScaleConfig.intervals && generatedScaleFrequencies.length > 0) {
           rawFreq = getSnappedFrequency(rawFreq);
@@ -151,11 +155,18 @@
         });
         await reverb.ready;
 
+        // Feedback delay for added texture
+        delay = new Tone.FeedbackDelay({
+            delayTime: "8n",
+            feedback: 0.5,
+            wet: 0 // Initialized to 0, controlled by slider
+        });
+
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delay, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
@@ -441,6 +452,8 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const delaySlider = document.getElementById('delaySlider');
+        const settingsToggleButton = document.getElementById('settingsToggleButton');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -505,6 +518,12 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        delaySlider.addEventListener('input', (e) => {
+            if (delay) {
+                delay.wet.value = parseFloat(e.target.value);
+            }
+        });
+        settingsToggleButton.addEventListener('click', showSettings);
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {

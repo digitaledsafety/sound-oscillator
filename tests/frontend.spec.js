@@ -38,7 +38,20 @@ test.describe('Sound Oscillator Frontend Tests', () => {
     await expect(page.locator('#scaleSelect')).toBeVisible();
     await expect(page.locator('#waveformSelect')).toBeVisible();
     await expect(page.locator('#volumeSlider')).toBeVisible();
+    await expect(page.locator('#delaySlider')).toBeVisible();
     await expect(page.locator('#clearAllBtn')).toBeVisible();
+  });
+
+  test('should show settings modal via floating button', async ({ page }) => {
+    const startButton = page.locator('#startButton');
+    await startButton.click();
+
+    const settingsButton = page.locator('#settingsToggleButton');
+    await expect(settingsButton).toBeVisible();
+    await settingsButton.click();
+
+    const modal = page.locator('#settingsModal');
+    await expect(modal).toBeVisible();
   });
 
   test('should display beta and gamma values', async ({ page }) => {
