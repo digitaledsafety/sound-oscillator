@@ -77,6 +77,24 @@ def test_extended_js_logic():
         print("Missing panner.pan.rampTo in orientation listener")
         return False
 
+    # Check for Delay
+    if 'delay = new Tone.FeedbackDelay' not in content:
+        print("Missing Tone.FeedbackDelay initialization")
+        return False
+    if 'delaySlider' not in content:
+        print("Missing delaySlider reference in JS")
+        return False
+
+    # Check for Settings Button
+    if 'settingsToggleButton' not in content:
+        print("Missing settingsToggleButton reference in JS")
+        return False
+
+    # Check for 20Hz floor
+    if 'Math.max(20, rawFreq)' not in content:
+        print("Missing 20Hz frequency floor")
+        return False
+
     return True
 
 if __name__ == "__main__":
