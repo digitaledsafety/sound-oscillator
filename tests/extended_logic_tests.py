@@ -20,7 +20,7 @@ def test_extended_js_logic():
         return False
 
     # Check for createSynth helper function
-    if 'function createSynth()' not in content:
+    if 'function createSynth(waveform)' not in content:
         print("Missing createSynth function")
         return False
 
