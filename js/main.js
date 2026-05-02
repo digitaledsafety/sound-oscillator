@@ -4,7 +4,6 @@
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterBus = null; // Central gain node for effects routing
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
-      let delayNode = null; // Feedback delay effect
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
       let gamma = 0; // Device orientation values (panning)
@@ -39,13 +38,8 @@
       let yScale = null;
 
       let waveformAnalyzer = null;
-      let spectrumAnalyzer = null;
       const barCount = 64; // Number of bars to display in the visualization
-
-      // Global caches for performance
-      let svgWidth = window.innerWidth;
-      let svgHeight = window.innerHeight;
-      let vizModeSelect = null;
+      // Removed minBarHeight global variable, now calculated dynamically
 
       // Long press and double tap variables
       let pressTimer = null;
@@ -53,10 +47,6 @@
       let isLongPress = false;
       let lastTapTime = 0;
       const doubleTapThreshold = 300; // milliseconds
-
-      // Multi-touch tracking
-      const activePointers = new Set();
-      const pressTimers = new Map();
 
       // --- Scale-related Functions ---
 
@@ -161,24 +151,15 @@
         });
         await reverb.ready;
 
-        // Feedback Delay
-        delayNode = new Tone.FeedbackDelay({
-          delayTime: "8n",
-          feedback: 0.3,
-          wet: 0.5
-        });
-
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
-        // Chain the effects to the panner: masterBus -> lowBump -> compressor -> delay -> reverb -> panner
-        masterBus.chain(lowBump, masterCompressor, delayNode, reverb, panner);
+        // Chain the effects to the panner
+        masterBus.chain(lowBump, masterCompressor, reverb, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
-        waveformAnalyzer = new Tone.Waveform(1024);
-        spectrumAnalyzer = new Tone.FFT(1024);
-        Tone.Destination.connect(waveformAnalyzer);
-        Tone.Destination.connect(spectrumAnalyzer);
+        waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
+        Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
 
         //console.log("Tone.js audio context ready to start on interaction.");
       }
@@ -333,17 +314,19 @@
         if (previewLoop) activeSoundCount++;
         activeSoundCount += savedLoops.length;
 
-        // Total volume balance: userVolume distributed across active sources
-        const totalGain = userVolume / Math.max(1, activeSoundCount);
+        // Calculate gain: divide by the number of active tracks (minimum of 1)
+        const busGain = 1.0 / Math.max(1, activeSoundCount);
 
+        // Apply a smooth ramp to the gain change on the masterBus node to avoid clicks/pops
         if (masterBus) {
-          masterBus.gain.rampTo(totalGain, 0.1);
+          masterBus.gain.rampTo(busGain, 0.1); // 0.1 seconds ramp
         }
 
-        // Keep Tone.Destination at 0dB (unity) unless we need a global mute
-        Tone.Destination.volume.rampTo(0, 0.1);
+        // Map the userVolume to the destination volume (0 to 1 -> -Infinity to 0 dB)
+        const volumeDb = Tone.gainToDb(userVolume);
+        Tone.Destination.volume.rampTo(volumeDb, 0.1);
 
-        //console.log(`Active: ${activeSoundCount}. Total Gain: ${totalGain.toFixed(2)}`);
+        //console.log(`Active sounds: ${activeSoundCount}. User volume: ${userVolume} (${volumeDb.toFixed(2)} dB). Master bus gain set to: ${busGain.toFixed(2)}`);
       }
 
 
@@ -370,52 +353,59 @@
                            .domain([0, 0.5, 1]) // Amplitude range
                            .range(["#3498db", "#f1c40f", "#e74c3c"]); // Blue, Yellow, Red
 
-      // Function to update the D3.js visualization
-      function updateVisualization() {
+      // Function to update the D3.js bar graph visualization
+      function updateWaveformVisualization() {
         if (!waveformAnalyzer || !waveformSvg) {
-          requestAnimationFrame(updateVisualization);
+          requestAnimationFrame(updateWaveformVisualization);
           return;
         }
 
-        const mode = vizModeSelect ? vizModeSelect.value : 'waveform';
-        let dataArray;
+        // Get the waveform data from the analyzer
+        const waveformArray = waveformAnalyzer.getValue();
 
-        if (mode === 'spectrum' && spectrumAnalyzer) {
-          dataArray = spectrumAnalyzer.getValue();
-        } else {
-          dataArray = waveformAnalyzer.getValue();
-        }
+        // Get current SVG dimensions
+        const svgWidth = waveformSvg.node().clientWidth;
+        const svgHeight = waveformSvg.node().clientHeight;
 
-        const minBarHeight = svgHeight * 0.01;
-        const samplesPerBar = Math.floor(dataArray.length / barCount);
+        // Dynamic minimum bar height based on SVG height
+        const minBarHeight = svgHeight * 0.01; // 1% of SVG height
+
+        // Calculate samples per bar and bar width
+        const samplesPerBar = Math.floor(waveformArray.length / barCount);
         const barWidth = svgWidth / barCount;
 
+        // Prepare data for bars (average amplitude for each segment)
         const barData = [];
-        const visualGain = mode === 'spectrum' ? 1.0 : 2.0;
-
+        const visualGain = 2.0; // Factor to visually amplify low signals
         for (let i = 0; i < barCount; i++) {
           let sum = 0;
           for (let j = 0; j < samplesPerBar; j++) {
-            let val = dataArray[i * samplesPerBar + j];
-            if (mode === 'spectrum') {
-              // FFT values are in dB, map them to 0-1 range
-              val = (val + 100) / 100;
-            }
-            sum += Math.min(1.0, Math.abs(val) * visualGain);
+            // Apply visualGain here to amplify for visualization, and clamp to 1.0
+            sum += Math.min(1.0, Math.abs(waveformArray[i * samplesPerBar + j]) * visualGain);
           }
-          barData.push(sum / samplesPerBar);
+          barData.push(sum / samplesPerBar); // Average amplitude for the bar
         }
 
-        waveformSvg.selectAll(".bar")
-          .data(barData)
-          .join("rect")
-          .attr("class", "bar")
-          .attr("x", (d, i) => i * barWidth + (barWidth * 0.1))
-          .attr("width", barWidth * 0.8)
+        // D3 update pattern for rectangles
+        const bars = waveformSvg.selectAll(".bar") // Select by class now
+          .data(barData);
+
+        // Enter new bars
+        bars.enter().append("rect")
+          .attr("class", "bar") // Assign class for styling
+          .attr("x", (d, i) => i * barWidth)
+          .attr("width", barWidth * 0.8) // Slightly smaller width for gaps
+          .merge(bars) // Merge enter and update selections
+          // Removed transition for real-time performance
+          .attr("x", (d, i) => i * barWidth + (barWidth * 0.1)) // Adjust x for centering with gap
+          // Ensure bars have a minimum height and are positioned from the bottom
           .attr("y", d => svgHeight - Math.max(minBarHeight, d * svgHeight))
           .attr("height", d => Math.max(minBarHeight, d * svgHeight))
-          .attr("fill", d => colorScale(d));
+          .attr("fill", d => colorScale(d)); // 'd' is the amplitude value for each bar
+        // Exit old bars
+        bars.exit().remove();
 
+        // Throttled real-time frequency/note display update
         const freq = getNormalizedValue();
         const display = document.getElementById('frequencyDisplay');
         if (display) {
@@ -423,21 +413,25 @@
           display.textContent = `${freq.toFixed(2)} Hz (${note})`;
         }
 
-        requestAnimationFrame(updateVisualization);
+        // Request the next frame
+        requestAnimationFrame(updateWaveformVisualization);
       }
 
       // Handle SVG resizing
       function resizeSvg() {
         if (waveformSvg) {
-          svgWidth = window.innerWidth;
-          svgHeight = window.innerHeight;
+          const svgElement = waveformSvg.node();
+          const width = window.innerWidth; // Use window dimensions for full screen
+          const height = window.innerHeight;
 
-          waveformSvg.attr("viewBox", `0 0 ${svgWidth} ${svgHeight}`)
-                     .attr("width", svgWidth)
-                     .attr("height", svgHeight);
+          // Update SVG viewbox to match new dimensions
+          waveformSvg.attr("viewBox", `0 0 ${width} ${height}`)
+                     .attr("width", width)
+                     .attr("height", height);
 
-          if (xScale) xScale.range([0, svgWidth]);
-          if (yScale) yScale.range([svgHeight, 0]);
+          // Update D3 scales ranges (though not directly used for bars, good practice)
+          xScale.range([0, width]);
+          yScale.range([height, 0]);
         }
       }
 
@@ -447,8 +441,6 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
-        const delaySlider = document.getElementById('delaySlider');
-        vizModeSelect = document.getElementById('vizModeSelect');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -513,11 +505,6 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
-        delaySlider.addEventListener('input', (e) => {
-          if (delayNode) {
-            delayNode.feedback.rampTo(parseFloat(e.target.value), 0.1);
-          }
-        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -580,50 +567,41 @@
         });
 
         // Event listeners for tap (click) and long press on the SVG visualizer
-        waveformSvg.on("pointerdown", function(event) {
-          activePointers.add(event.pointerId);
-
-          const timer = setTimeout(() => {
+        waveformSvg.on("pointerdown", async function(event) {
+          isLongPress = false;
+          const touchCount = event.touches ? event.touches.length : 1;
+          pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (activePointers.size === 2) {
-              showSettings();
-            } else if (activePointers.size === 1) {
-              toggleContinuousNote();
+            if (touchCount === 2) {
+                showSettings();
+            } else {
+                toggleContinuousNote(); // 1-finger long press toggles continuous note
             }
           }, longPressDuration);
-
-          pressTimers.set(event.pointerId, timer);
         });
 
-        waveformSvg.on("pointerup pointercancel", function(event) {
-          const timer = pressTimers.get(event.pointerId);
-          if (timer) {
-            clearTimeout(timer);
-            pressTimers.delete(event.pointerId);
-          }
-
-          activePointers.delete(event.pointerId);
-
+        waveformSvg.on("pointerup", function(event) {
+          clearTimeout(pressTimer); // Clear long press timer
           if (isLongPress) {
-            if (activePointers.size === 0) isLongPress = false;
-            return;
+              isLongPress = false; // Reset long press flag
+              return; // Long press already handled
           }
 
-          if (event.type === "pointerup") {
-            const currentTime = performance.now();
-            if (currentTime - lastTapTime < doubleTapThreshold) {
+          const currentTime = performance.now(); // Use performance.now() for UI event timing
+          if (currentTime - lastTapTime < doubleTapThreshold) {
+              // This is a double tap
               clearSounds();
-              lastTapTime = 0;
-            } else {
-              if (instrument || previewLoop || savedLoops.length > 0) {
-                addFixedLoop();
+              lastTapTime = 0; // Reset to prevent triple taps from being double taps
+          } else {
+              // This is a single tap (or the first tap of a potential double tap)
+              if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
+                  addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
               } else {
-                startPreviewLoop();
+                  startPreviewLoop(); // Otherwise, start the dynamic preview loop
               }
               lastTapTime = currentTime;
-            }
           }
-          event.preventDefault();
+          event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
         });
 
         // Register the service worker
@@ -649,8 +627,7 @@
         });
 
         startSounds(); // Prepare Tone.js, but don't start audio context yet
-        resizeSvg(); // Ensure initial dimensions are cached
-        updateVisualization(); // Start the D3 visualization loop
+        updateWaveformVisualization(); // Start the D3 visualization loop
         updateMasterVolume(); // Initial volume update on load
 
         // Keyboard shortcuts
