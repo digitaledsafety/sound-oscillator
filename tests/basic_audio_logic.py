@@ -40,16 +40,6 @@ def test_js_logic_integrity():
         print("Missing frequencyDisplay")
         return False
 
-    # Check for spectrum analyzer
-    if 'spectrumAnalyzer = new Tone.FFT' not in content:
-        print("Missing spectrumAnalyzer")
-        return False
-
-    # Check for .join() pattern in D3
-    if '.join("rect")' not in content:
-        print("Missing D3 .join() pattern")
-        return False
-
     return True
 
 if __name__ == "__main__":

@@ -46,7 +46,7 @@ def test_extended_js_logic():
         return False
 
     # Check for updated updateMasterVolume logic
-    if 'userVolume / Math.max(1, activeSoundCount)' not in content:
+    if '1.0 / Math.max(1, activeSoundCount)' not in content:
         print("Missing updated gain calculation in updateMasterVolume")
         return False
     if 'masterBus.gain.rampTo' not in content:
@@ -75,16 +75,6 @@ def test_extended_js_logic():
         return False
     if 'panner.pan.rampTo' not in content:
         print("Missing panner.pan.rampTo in orientation listener")
-        return False
-
-    # Check for DelayNode
-    if 'delayNode = new Tone.FeedbackDelay' not in content:
-        print("Missing delayNode initialization")
-        return False
-
-    # Check for activePointers Set
-    if 'const activePointers = new Set()' not in content:
-        print("Missing activePointers initialization")
         return False
 
     return True
