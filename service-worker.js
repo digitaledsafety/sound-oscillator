@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sound-oscillator-cache-v1';
+const CACHE_NAME = 'gyro-synth-cache-v1';
 const urlsToCache = [
   'index.html',
   'js/main.js',
