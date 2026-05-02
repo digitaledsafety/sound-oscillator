@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test.describe('Sound Oscillator Frontend Tests', () => {
+test.describe('Gyro Synth Frontend Tests', () => {
   test.beforeEach(async ({ page }) => {
     // Serve the app locally
     await page.goto('http://localhost:8000');
