@@ -5,6 +5,7 @@
       let masterBus = null; // Central gain node for effects routing
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let delayNode = null; // Feedback delay effect
+      let reverbNode = null; // Reverb effect
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
       let gamma = 0; // Device orientation values (panning)
@@ -41,6 +42,30 @@
       let waveformAnalyzer = null;
       let spectrumAnalyzer = null;
       const barCount = 64; // Number of bars to display in the visualization
+
+      /**
+       * Creates a visual ripple effect at the specified coordinates.
+       * @param {number} x - The x-coordinate.
+       * @param {number} y - The y-coordinate.
+       */
+      function createRipple(x, y) {
+        if (!waveformSvg) return;
+
+        waveformSvg.append("circle")
+          .attr("cx", x)
+          .attr("cy", y)
+          .attr("r", 0)
+          .attr("fill", "none")
+          .attr("stroke", "#3498db")
+          .attr("stroke-width", 2)
+          .attr("opacity", 1)
+          .transition()
+          .duration(1000)
+          .ease(d3.easeOutExpo)
+          .attr("r", 100)
+          .attr("opacity", 0)
+          .remove();
+      }
 
       // Global caches for performance
       let svgWidth = window.innerWidth;
@@ -89,11 +114,12 @@
       }
 
       /**
-       * Creates a new FMSynth with the current selected waveform and connects it to the master gain.
+       * Creates a new FMSynth with the specified waveform and connects it to the master gain.
+       * @param {string} [waveform] - The oscillator type. Defaults to the current UI selection.
        * @returns {Tone.FMSynth} The newly created synth.
        */
-      function createSynth() {
-        const selectedWaveform = document.getElementById('waveformSelect').value;
+      function createSynth(waveform) {
+        const selectedWaveform = waveform || document.getElementById('waveformSelect').value;
         return new Tone.FMSynth({
           oscillator: { type: selectedWaveform }
         }).connect(masterBus);
@@ -155,11 +181,11 @@
         const lowBump = new Tone.Filter(200, "lowshelf");
 
         // Reverb for spatial depth
-        const reverb = new Tone.Reverb({
-          decay: 2,
-          wet: 0.3
+        reverbNode = new Tone.Reverb({
+          decay: parseFloat(document.getElementById('reverbDecaySlider').value),
+          wet: parseFloat(document.getElementById('reverbWetSlider').value)
         });
-        await reverb.ready;
+        await reverbNode.ready;
 
         // Feedback Delay
         delayNode = new Tone.FeedbackDelay({
@@ -172,7 +198,7 @@
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner: masterBus -> lowBump -> compressor -> delay -> reverb -> panner
-        masterBus.chain(lowBump, masterCompressor, delayNode, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, delayNode, reverbNode, panner);
 
         // Initialize waveform analyzer and connect it to Tone.Destination
         waveformAnalyzer = new Tone.Waveform(1024);
@@ -448,6 +474,8 @@
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
         const delaySlider = document.getElementById('delaySlider');
+        const reverbWetSlider = document.getElementById('reverbWetSlider');
+        const reverbDecaySlider = document.getElementById('reverbDecaySlider');
         vizModeSelect = document.getElementById('vizModeSelect');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
@@ -518,6 +546,16 @@
             delayNode.feedback.rampTo(parseFloat(e.target.value), 0.1);
           }
         });
+        reverbWetSlider.addEventListener('input', (e) => {
+          if (reverbNode) {
+            reverbNode.wet.rampTo(parseFloat(e.target.value), 0.1);
+          }
+        });
+        reverbDecaySlider.addEventListener('change', (e) => {
+          if (reverbNode) {
+            reverbNode.decay = parseFloat(e.target.value);
+          }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -582,6 +620,10 @@
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", function(event) {
           activePointers.add(event.pointerId);
+
+          // Create visual feedback
+          const [x, y] = d3.pointer(event);
+          createRipple(x, y);
 
           const timer = setTimeout(() => {
             isLongPress = true;

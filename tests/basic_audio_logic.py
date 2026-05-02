@@ -18,8 +18,8 @@ def test_js_logic_integrity():
     if 'new Tone.Reverb' not in content:
         print("Missing Tone.Reverb")
         return False
-    if 'await reverb.ready' not in content:
-        print("Missing await reverb.ready")
+    if 'await reverbNode.ready' not in content:
+        print("Missing await reverbNode.ready")
         return False
     # Check that reverb instance doesn't have .toDestination() directly in startSounds
     # In startSounds function:
