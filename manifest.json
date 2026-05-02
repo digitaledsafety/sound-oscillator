@@ -1,6 +1,6 @@
 {
-  "name": "Sound Oscillator",
-  "short_name": "Oscillator",
+  "name": "Gyro Synth",
+  "short_name": "Gyro Synth",
   "description": "A PWA that generates sound based on device orientation with musical scales.",
   "start_url": "./",
   "display": "standalone",
