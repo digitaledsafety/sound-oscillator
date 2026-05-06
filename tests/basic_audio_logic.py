@@ -9,6 +9,19 @@ def test_js_logic_integrity():
         print("Missing previewLoop.dispose();")
         return False
 
+    # Check for FeedbackDelay
+    if 'delayNode = new Tone.FeedbackDelay' not in content:
+        print("Missing Tone.FeedbackDelay")
+        return False
+
+    # Check for attack and release global variables
+    if 'let attackTime = 0.1;' not in content:
+        print("Missing attackTime variable")
+        return False
+    if 'let releaseTime = 0.5;' not in content:
+        print("Missing releaseTime variable")
+        return False
+
     # Check for timing update
     if 'performance.now()' not in content:
         print("Missing performance.now()")
