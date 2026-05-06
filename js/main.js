@@ -3,6 +3,10 @@
       let previewLoop = null; // Tone.Loop for the pulsing preview sound
       let savedLoops = []; // Array to store multiple Tone.Loop instances (fixed tones from subsequent short taps)
       let masterBus = null; // Central gain node for effects routing
+      let delayNode = null; // Feedback delay effect
+      let attackTime = 0.1; // Synth attack time
+      let releaseTime = 0.5; // Synth release time
+      let delayWet = 0.3; // Delay effect wet level
       let userVolume = 0.8; // User-defined volume (0.0 to 1.0)
       let wakeLock = null; // Screen wake lock object
       let beta = 0; // Device orientation values (pitch)
@@ -47,6 +51,7 @@
       let isLongPress = false;
       let lastTapTime = 0;
       const doubleTapThreshold = 300; // milliseconds
+      let activePointers = new Set(); // Track active pointer IDs for multi-touch
 
       // --- Scale-related Functions ---
 
@@ -85,7 +90,11 @@
       function createSynth() {
         const selectedWaveform = document.getElementById('waveformSelect').value;
         return new Tone.FMSynth({
-          oscillator: { type: selectedWaveform }
+          oscillator: { type: selectedWaveform },
+          envelope: {
+            attack: attackTime,
+            release: releaseTime
+          }
         }).connect(masterBus);
       }
 
@@ -151,15 +160,19 @@
         });
         await reverb.ready;
 
+        // Feedback Delay
+        delayNode = new Tone.FeedbackDelay("8n", 0.5);
+        delayNode.wet.value = delayWet;
+
         // Stereo Panner for orientation-based spatial audio
         panner = new Tone.Panner(0).toDestination();
 
         // Chain the effects to the panner
-        masterBus.chain(lowBump, masterCompressor, reverb, panner);
+        masterBus.chain(lowBump, masterCompressor, reverb, delayNode, panner);
 
-        // Initialize waveform analyzer and connect it to Tone.Destination
+        // Initialize waveform analyzer and connect it to panner
         waveformAnalyzer = new Tone.Waveform(1024); // 1024 samples for the waveform
-        Tone.Destination.connect(waveformAnalyzer); // Connect destination output to analyzer
+        panner.connect(waveformAnalyzer);
 
         //console.log("Tone.js audio context ready to start on interaction.");
       }
@@ -173,8 +186,14 @@
 
         // Stop the continuous instrument if it's active
         if (instrument) {
-          instrument.stop();
-          instrument.dispose(); // Dispose of the instrument to free up resources
+          if (instrument.triggerRelease) {
+              instrument.triggerRelease();
+              const toDispose = instrument;
+              setTimeout(() => toDispose.dispose(), releaseTime * 1000 + 100);
+          } else {
+              if (instrument.stop) instrument.stop();
+              instrument.dispose();
+          }
           instrument = null;
         }
 
@@ -183,7 +202,9 @@
             previewLoop.stop();
             // Dispose of the synth associated with the previewLoop
             if (previewLoop.synth) {
-                previewLoop.synth.dispose();
+                previewLoop.synth.triggerRelease();
+                const toDispose = previewLoop.synth;
+                setTimeout(() => toDispose.dispose(), releaseTime * 1000 + 100);
             }
             previewLoop.dispose();
             previewLoop = null;
@@ -193,7 +214,9 @@
         savedLoops.forEach(loop => {
           loop.stop();
           if (loop.synth) {
-              loop.synth.dispose();
+              loop.synth.triggerRelease();
+              const toDispose = loop.synth;
+              setTimeout(() => toDispose.dispose(), releaseTime * 1000 + 100);
           }
           loop.dispose(); // Dispose of each loop
         });
@@ -209,16 +232,22 @@
           Tone.start();
         }
 
-        if (instrument) {
+        if (instrument && instrument.active) {
           // If instrument is active, stop it
-          instrument.stop();
-          instrument.dispose();
-          instrument = null;
-          //console.log("Continuous note instrument stopped.");
+          const currentInstrument = instrument;
+          currentInstrument.triggerRelease();
+          currentInstrument.active = false;
+          instrument = null; // Clear global reference immediately to allow re-triggering
+
+          setTimeout(() => {
+              currentInstrument.dispose();
+          }, releaseTime * 1000 + 100);
+          //console.log("Continuous note instrument stopping.");
         } else {
           // If instrument is not active, start it
-          const selectedWaveform = document.getElementById('waveformSelect').value;
-          instrument = new Tone.Oscillator(getNormalizedValue(), selectedWaveform).connect(masterBus).start();
+          instrument = createSynth();
+          instrument.triggerAttack(getNormalizedValue());
+          instrument.active = true;
           //console.log("Continuous note instrument started.");
           // Ensure transport is running if it's not already
           if (Tone.getTransport().state !== 'started') {
@@ -237,7 +266,7 @@
 
         // Ensure no continuous instrument is playing
         if (instrument) {
-          instrument.stop();
+          if (instrument.stop) instrument.stop();
           instrument.dispose();
           instrument = null;
         }
@@ -302,6 +331,36 @@
         }
         //console.log(`Added a new fixed loop at frequency: ${fixedFrequency.toFixed(2)} Hz. Total loops: ${savedLoops.length}`);
         updateMasterVolume(); // Update volume after adding a new loop
+      }
+
+      /**
+       * Creates a visual ripple effect at the specified coordinates.
+       * @param {number} x - The x-coordinate of the ripple.
+       * @param {number} y - The y-coordinate of the ripple.
+       */
+      function createRipple(x, y) {
+        if (!waveformSvg) return;
+
+        // Convert client coordinates to SVG coordinates
+        const svgElement = waveformSvg.node();
+        const pt = svgElement.createSVGPoint();
+        pt.x = x;
+        pt.y = y;
+        const svgP = pt.matrixTransform(svgElement.getScreenCTM().inverse());
+
+        waveformSvg.append("circle")
+          .attr("cx", svgP.x)
+          .attr("cy", svgP.y)
+          .attr("r", 5)
+          .attr("fill", "none")
+          .attr("stroke", "#3498db")
+          .attr("stroke-width", 2)
+          .attr("opacity", 0.8)
+          .transition()
+          .duration(800)
+          .attr("r", 100)
+          .attr("opacity", 0)
+          .remove();
       }
 
       /**
@@ -441,6 +500,9 @@
         const scaleSelect = document.getElementById('scaleSelect');
         const waveformSelect = document.getElementById('waveformSelect');
         const volumeSlider = document.getElementById('volumeSlider');
+        const attackSlider = document.getElementById('attackSlider');
+        const releaseSlider = document.getElementById('releaseSlider');
+        const delayWetSlider = document.getElementById('delayWetSlider');
         const clearAllBtn = document.getElementById('clearAllBtn');
         const settingsModal = document.getElementById('settingsModal');
         const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -505,6 +567,18 @@
             userVolume = parseFloat(e.target.value);
             updateMasterVolume();
         });
+        attackSlider.addEventListener('input', (e) => {
+            attackTime = parseFloat(e.target.value);
+        });
+        releaseSlider.addEventListener('input', (e) => {
+            releaseTime = parseFloat(e.target.value);
+        });
+        delayWetSlider.addEventListener('input', (e) => {
+            delayWet = parseFloat(e.target.value);
+            if (delayNode) {
+                delayNode.wet.rampTo(delayWet, 0.1);
+            }
+        });
         clearAllBtn.addEventListener('click', () => clearSounds());
         closeSettingsBtn.addEventListener('click', hideSettings);
         settingsModal.addEventListener('click', (e) => {
@@ -568,11 +642,14 @@
 
         // Event listeners for tap (click) and long press on the SVG visualizer
         waveformSvg.on("pointerdown", async function(event) {
+          activePointers.add(event.pointerId);
           isLongPress = false;
-          const touchCount = event.touches ? event.touches.length : 1;
+          createRipple(event.clientX, event.clientY);
+
+          const touchCount = activePointers.size;
           pressTimer = setTimeout(() => {
             isLongPress = true;
-            if (touchCount === 2) {
+            if (touchCount >= 2) {
                 showSettings();
             } else {
                 toggleContinuousNote(); // 1-finger long press toggles continuous note
@@ -581,27 +658,36 @@
         });
 
         waveformSvg.on("pointerup", function(event) {
+          activePointers.delete(event.pointerId);
           clearTimeout(pressTimer); // Clear long press timer
           if (isLongPress) {
               isLongPress = false; // Reset long press flag
               return; // Long press already handled
           }
 
-          const currentTime = performance.now(); // Use performance.now() for UI event timing
-          if (currentTime - lastTapTime < doubleTapThreshold) {
-              // This is a double tap
-              clearSounds();
-              lastTapTime = 0; // Reset to prevent triple taps from being double taps
-          } else {
-              // This is a single tap (or the first tap of a potential double tap)
-              if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
-                  addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
-              } else {
-                  startPreviewLoop(); // Otherwise, start the dynamic preview loop
-              }
-              lastTapTime = currentTime;
+          // Only trigger tap action on the last pointer up and if it was a single touch
+          if (activePointers.size === 0) {
+            const currentTime = performance.now(); // Use performance.now() for UI event timing
+            if (currentTime - lastTapTime < doubleTapThreshold) {
+                // This is a double tap
+                clearSounds();
+                lastTapTime = 0; // Reset to prevent triple taps from being double taps
+            } else {
+                // This is a single tap (or the first tap of a potential double tap)
+                if (instrument || previewLoop || savedLoops.length > 0) { // If any sound is currently active
+                    addFixedLoop(); // Add a fixed loop, allowing existing sounds to continue
+                } else {
+                    startPreviewLoop(); // Otherwise, start the dynamic preview loop
+                }
+                lastTapTime = currentTime;
+            }
           }
           event.preventDefault(); // Prevent default browser behavior (e.g., zooming on double tap)
+        });
+
+        waveformSvg.on("pointercancel", function(event) {
+          activePointers.delete(event.pointerId);
+          clearTimeout(pressTimer);
         });
 
         // Register the service worker

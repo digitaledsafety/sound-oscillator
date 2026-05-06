@@ -31,6 +31,16 @@ def test_extended_js_logic():
         print(f"createSynth() should be called at least twice, found {synth_calls}")
         return False
 
+    # Check for Ripple effect
+    if 'function createRipple' not in content:
+        print("Missing createRipple function")
+        return False
+
+    # Check for activePointers Set
+    if 'let activePointers = new Set();' not in content:
+        print("Missing activePointers initialization")
+        return False
+
     # Check for updated compressor settings
     if 'threshold: -12' not in content:
         print("Missing updated compressor threshold")
